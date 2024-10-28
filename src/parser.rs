@@ -1,21 +1,21 @@
-enum CommandType {
+pub enum CommandType {
     Move,
     Line,
     Rectangle,
 }
 
-struct CommandFSM {
+pub struct CommandFSM {
     coords: Option<CoordFSM>,
     ctype: CommandType,
 }
 
-struct Command {
+pub struct Command {
     coords: Coords,
     ctype: CommandType,
 }
 
 impl CommandFSM {
-    fn new(next_char: char) -> Self {
+    pub fn new(next_char: char) -> Self {
         let mut coords = None;
         let ctype = match next_char {
             'l' => CommandType::Line,
@@ -33,7 +33,7 @@ impl CommandFSM {
         Self { coords, ctype }
     }
 
-    fn advance(self, next_char: char) -> Result<Command, Self> {
+    pub fn advance(self, next_char: char) -> Result<Command, Self> {
         match self.coords {
             None => match next_char {
                 '0'..'9' => Err(Self {
