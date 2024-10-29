@@ -1,17 +1,44 @@
+use std::fmt::Debug;
+
+use leptos::logging;
+use leptos::{view, IntoView};
+
+#[derive(Debug, Clone)]
 pub enum CommandType {
     Move,
     Line,
     Rectangle,
+    Text,
 }
 
+#[derive(Debug, Clone)]
 pub struct CommandFSM {
     coords: Option<CoordFSM>,
     ctype: CommandType,
 }
 
+impl IntoView for CommandFSM {
+    fn into_view(self) -> leptos::View {
+        view! {
+            <p>"I exist"</p>
+        }
+        .into_view()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Command {
     coords: Coords,
     ctype: CommandType,
+}
+
+impl Command {
+    pub fn ctype(&self) -> CommandType {
+        self.ctype.clone()
+    }
+    pub fn coords(&self) -> Coords {
+        self.coords.clone()
+    }
 }
 
 impl CommandFSM {
@@ -28,7 +55,9 @@ impl CommandFSM {
                 coords = Some(CoordFSM::Rel(RelCoord::EnteringFirstNum(0)));
                 CommandType::Move
             }
-            _ => panic!("Not valid command begin: {next_char}"),
+            _ => {
+                panic!("Not valid command begin: {next_char}")
+            }
         };
         Self { coords, ctype }
     }
@@ -44,7 +73,10 @@ impl CommandFSM {
                     coords: Some(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0))),
                     ctype: self.ctype,
                 }),
-                _ => panic!("Not valid coord begin: {next_char}"),
+                _ => {
+                    logging::error!("Not valid coord begin: {next_char}");
+                    Err(self)
+                }
             },
             Some(fsm) => match fsm.advance(next_char) {
                 Ok(coords) => Ok(Command {
@@ -60,7 +92,8 @@ impl CommandFSM {
     }
 }
 
-enum Direction {
+#[derive(Debug, Clone)]
+pub enum Direction {
     Left,
     Right,
     Up,
@@ -84,8 +117,10 @@ impl From<char> for Direction {
     }
 }
 
-struct RelCoordPair(u32, Direction);
+#[derive(Debug, Clone)]
+pub struct RelCoordPair(pub u32, pub Direction);
 
+#[derive(Debug, Clone)]
 enum RelCoord {
     EnteringFirstNum(u32),
     FirstNumAndDirection(RelCoordPair),
@@ -93,7 +128,8 @@ enum RelCoord {
     BothNums(RelCoordPair, RelCoordPair),
 }
 
-enum FinishedRelCoord {
+#[derive(Debug, Clone)]
+pub enum FinishedRelCoord {
     OneCoord(RelCoordPair),
     TwoCoords(RelCoordPair, RelCoordPair),
 }
@@ -111,38 +147,53 @@ impl RelCoord {
                     num,
                     next_char.into(),
                 ))),
-                _ => panic!("Not part of RelCoord Syntax (first num): {next_char}"),
-            },
-            Self::FirstNumAndDirection(rcp) => {
-                match next_char {
-                    '\n' => {
-                        // TODO: do some drawing
-                        Ok(FinishedRelCoord::OneCoord(rcp))
-                    }
-                    ';' => Err(Self::EnteringSecondNum(rcp, 0)),
-                    _ => panic!("Not part of RelCoord Syntax (second num): {next_char}"),
+                _ => {
+                    logging::error!("Not part of RelCoord Syntax (first num): {next_char}");
+                    Err(self)
                 }
-            }
-            Self::EnteringSecondNum(rcp, num) => match next_char {
-                '0'..='9' => Err(Self::EnteringSecondNum(rcp, push_num(num, next_char))),
-                LEFT | DOWN | UP | RIGHT => {
-                    Err(Self::BothNums(rcp, RelCoordPair(num, next_char.into())))
-                }
-                _ => panic!("Not part of RelCoord Syntax (entering second num): {next_char}"),
             },
-            Self::BothNums(rcp1, rcp2) => match next_char {
-                '\n' | ';' => Ok(FinishedRelCoord::TwoCoords(rcp1, rcp2)),
-                _ => panic!("Not part of RelCoord Syntax (both nums): {next_char}"),
+            Self::FirstNumAndDirection(ref rcp) => match next_char {
+                '\n' => Ok(FinishedRelCoord::OneCoord(rcp.clone())),
+                ';' => Err(Self::EnteringSecondNum(rcp.clone(), 0)),
+                _ => {
+                    logging::error!("Not part of RelCoord Syntax (second num): {next_char}");
+                    Err(self)
+                }
+            },
+            Self::EnteringSecondNum(ref rcp, num) => match next_char {
+                '0'..='9' => Err(Self::EnteringSecondNum(
+                    rcp.clone(),
+                    push_num(num, next_char),
+                )),
+                LEFT | DOWN | UP | RIGHT => Ok(FinishedRelCoord::TwoCoords(
+                    rcp.clone(),
+                    RelCoordPair(num, next_char.into()),
+                )),
+                _ => {
+                    logging::error!(
+                        "Not part of RelCoord Syntax (entering second num): {next_char}"
+                    );
+                    Err(self)
+                }
+            },
+            Self::BothNums(ref rcp1, ref rcp2) => match next_char {
+                '\n' | ';' => Ok(FinishedRelCoord::TwoCoords(rcp1.clone(), rcp2.clone())),
+                _ => {
+                    logging::error!("Not part of RelCoord Syntax (both nums): {next_char}");
+                    Err(self)
+                }
             },
         }
     }
 }
 
-enum Coords {
+#[derive(Debug, Clone)]
+pub enum Coords {
     AbsCoord(u32, u32),
     RelCoord(FinishedRelCoord),
 }
 
+#[derive(Debug, Clone)]
 enum AbsCoord {
     EnteringFirstNum(u32),
     EnteringSecondNum(u32, u32),
@@ -154,17 +205,24 @@ impl AbsCoord {
             Self::EnteringFirstNum(num) => match next_char {
                 '0'..'9' => Err(Self::EnteringFirstNum(push_num(num, next_char))),
                 ';' => Err(Self::EnteringSecondNum(num, 0)),
-                _ => panic!("Not part of AbsCoord Syntax (first num): {next_char}"),
+                _ => {
+                    logging::error!("Not part of AbsCoord Syntax (first num): {next_char}");
+                    Err(self)
+                }
             },
             Self::EnteringSecondNum(num1, num) => match next_char {
-                '0'..'9' => Err(Self::EnteringFirstNum(push_num(num, next_char))),
+                '0'..'9' => Err(Self::EnteringSecondNum(num1, push_num(num, next_char))),
                 ';' => Ok(Coords::AbsCoord(num1, num)),
-                _ => panic!("Not part of AbsCoord Syntax (second num): {next_char}"),
+                _ => {
+                    logging::error!("Not part of AbsCoord Syntax (second num): {next_char}");
+                    Err(self)
+                }
             },
         }
     }
 }
 
+#[derive(Debug, Clone)]
 enum CoordFSM {
     Abs(AbsCoord),
     Rel(RelCoord),
