@@ -1,11 +1,11 @@
 use leptos::mount_to_body;
 use leptos::view;
-use vimp::components::Reader;
+use vimp::components::Canvas;
 
 fn main() {
     mount_to_body(|| {
         view! {
-            <Reader/>
+            <Canvas/>
         }
     });
     println!("Hello, world!");
