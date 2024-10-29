@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 leptos = { version = "0.6.15", features = ["csr", "nightly"] }
+regex = "1.11.1"
