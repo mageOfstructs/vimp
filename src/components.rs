@@ -1,6 +1,8 @@
 use leptos::{
-    component, create_signal, ev::Event, event_target_value, logging, provide_context, use_context,
-    view, IntoView, ReadSignal, SignalUpdate, WriteSignal,
+    component, create_signal,
+    ev::{Event, KeyboardEvent},
+    event_target_value, logging, provide_context, use_context, view, IntoView, ReadSignal,
+    SignalUpdate, WriteSignal,
 };
 use regex::Regex;
 
@@ -20,7 +22,6 @@ pub fn Canvas() -> impl IntoView {
     view! {
         <Reader/>
         <Cursor x={x} y={y}/>
-
     }
 }
 
@@ -58,33 +59,28 @@ fn parse_command(com: Command) {
 
 #[component]
 fn Reader() -> impl IntoView {
-    let (getter, setter) = create_signal(String::new());
-    let parser_fn = move |evt: Event| {
-        let com = event_target_value(&evt);
-        let reg = Regex::new(REGEX).unwrap();
-        if reg.is_match(&com) {
-            logging::log!("We got a match!");
-            let mut it = com.chars();
-            let mut fsm = CommandFSM::new(it.next().expect("REGEX let empty string through"));
-            logging::log!("FSM: {fsm:?}");
-            for char in it {
-                match fsm.advance(char) {
-                    Ok(command) => {
-                        logging::log!("{command:?}");
-                        parse_command(command);
-                        break;
+    let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
+    let on_keypress = move |evt: KeyboardEvent| {
+        let next_char = evt.key();
+        logging::log!("We got {next_char}!");
+        if next_char.len() == 1 {
+            let next_char = next_char.chars().next().unwrap();
+            match fsm() {
+                Some(fsm) => match fsm.advance(next_char) {
+                    Ok(com) => {
+                        parse_command(com);
+                        set_fsm(None);
                     }
-                    Err(new_state) => fsm = new_state,
-                }
-                logging::log!("FSM: {fsm:?}");
+                    Err(new_fsm) => set_fsm(Some(new_fsm)),
+                },
+                None => set_fsm(Some(CommandFSM::new(next_char))),
             }
         }
-        setter(com);
     };
-
     view! {
-        <input prop:value=getter on:input=parser_fn/>
-        {getter}
+        <p>Current command: {fsm}</p>
+        <svg tabindex="1" autofocus on:keydown=on_keypress width="100%" height="100%">
+        </svg>
         <br/>
     }
 }
