@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 
 use leptos::logging;
 use leptos::{view, IntoView};
@@ -11,16 +11,45 @@ pub enum CommandType {
     Text,
 }
 
+impl Display for CommandType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                CommandType::Move => "",
+                CommandType::Line => "l",
+                CommandType::Rectangle => "r",
+                CommandType::Text => "t",
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CommandFSM {
     coords: Option<CoordFSM>,
     ctype: CommandType,
 }
 
+impl Display for CommandFSM {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}{}",
+            self.ctype,
+            match self.coords {
+                None => "".to_string(),
+                Some(ref coords) => coords.to_string(),
+            }
+        )
+    }
+}
+
 impl IntoView for CommandFSM {
     fn into_view(self) -> leptos::View {
         view! {
-            <p>"I exist"</p>
+            <p>{self.to_string()}</p>
         }
         .into_view()
     }
@@ -117,8 +146,29 @@ impl From<char> for Direction {
     }
 }
 
+impl Display for Direction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Left => LEFT,
+                Self::Right => RIGHT,
+                Self::Down => DOWN,
+                Self::Up => UP,
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RelCoordPair(pub u32, pub Direction);
+
+impl Display for RelCoordPair {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}{}", self.0, self.1)
+    }
+}
 
 #[derive(Debug, Clone)]
 enum RelCoord {
@@ -126,6 +176,43 @@ enum RelCoord {
     FirstNumAndDirection(RelCoordPair),
     EnteringSecondNum(RelCoordPair, u32),
     BothNums(RelCoordPair, RelCoordPair),
+}
+
+trait AutoHide {
+    fn to_string_autohide(&self) -> String;
+}
+impl AutoHide for u32 {
+    fn to_string_autohide(&self) -> String {
+        if *self == 0 {
+            return "".to_string();
+        }
+        self.to_string()
+    }
+}
+
+impl Display for RelCoord {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::EnteringFirstNum(num) => num.to_string_autohide(),
+                Self::FirstNumAndDirection(rcp) => rcp.to_string(),
+                Self::EnteringSecondNum(rcp, num) => {
+                    let mut ret = rcp.to_string();
+                    ret.push(';');
+                    ret.push_str(&num.to_string_autohide());
+                    ret
+                }
+                Self::BothNums(rcp, rcp2) => {
+                    let mut ret = rcp.to_string();
+                    ret.push(';');
+                    ret.push_str(&rcp2.to_string());
+                    ret
+                }
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +286,24 @@ enum AbsCoord {
     EnteringSecondNum(u32, u32),
 }
 
+impl Display for AbsCoord {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "a{}",
+            match self {
+                Self::EnteringFirstNum(num) => num.to_string_autohide(),
+                Self::EnteringSecondNum(num, num2) => {
+                    let mut ret = num.to_string_autohide();
+                    ret.push(';');
+                    ret.push_str(&num2.to_string_autohide());
+                    ret
+                }
+            }
+        )
+    }
+}
+
 impl AbsCoord {
     fn advance(self, next_char: char) -> Result<Coords, Self> {
         match self {
@@ -226,6 +331,19 @@ impl AbsCoord {
 enum CoordFSM {
     Abs(AbsCoord),
     Rel(RelCoord),
+}
+
+impl Display for CoordFSM {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Abs(c) => c.to_string(),
+                Self::Rel(c) => c.to_string(),
+            }
+        )
+    }
 }
 
 impl CoordFSM {
