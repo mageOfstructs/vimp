@@ -49,7 +49,7 @@ impl Display for CommandFSM {
 impl IntoView for CommandFSM {
     fn into_view(self) -> leptos::View {
         view! {
-            <p>{self.to_string()}</p>
+            {self.to_string()}
         }
         .into_view()
     }
@@ -71,6 +71,18 @@ impl Command {
 }
 
 impl CommandFSM {
+    pub fn from(str: String) -> Result<Self, ()> {
+        let mut it = str.chars();
+        let mut ret = Self::new(it.next().unwrap());
+        for char in it {
+            match ret.advance(char) {
+                Ok(_) => todo!(),
+                Err(new_state) => ret = new_state,
+            }
+        }
+        Ok(ret)
+    }
+
     pub fn new(next_char: char) -> Self {
         let mut coords = None;
         let ctype = match next_char {
@@ -163,6 +175,17 @@ impl Display for Direction {
 
 #[derive(Debug, Clone)]
 pub struct RelCoordPair(pub u32, pub Direction);
+
+impl RelCoordPair {
+    pub fn getCoords(&self, x: u32, y: u32) -> (u32, u32) {
+        match self.1 {
+            Direction::Up => (x, y - self.0),
+            Direction::Down => (x, y + self.0),
+            Direction::Left => (x - self.0, y),
+            Direction::Right => (x + self.0, y),
+        }
+    }
+}
 
 impl Display for RelCoordPair {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -292,11 +315,11 @@ impl Display for AbsCoord {
             f,
             "a{}",
             match self {
-                Self::EnteringFirstNum(num) => num.to_string_autohide(),
+                Self::EnteringFirstNum(num) => num.to_string(),
                 Self::EnteringSecondNum(num, num2) => {
-                    let mut ret = num.to_string_autohide();
+                    let mut ret = num.to_string();
                     ret.push(';');
-                    ret.push_str(&num2.to_string_autohide());
+                    ret.push_str(&num2.to_string());
                     ret
                 }
             }
