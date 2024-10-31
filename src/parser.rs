@@ -1,14 +1,16 @@
 use std::fmt::{Debug, Display, Formatter};
 
-use leptos::logging;
+use leptos::{logging, use_context};
 use leptos::{view, IntoView};
+
+use crate::components::get_cursor_pos;
 
 #[derive(Debug, Clone)]
 pub enum CommandType {
     Move,
     Line,
     Rectangle,
-    Text,
+    Text(String),
 }
 
 impl Display for CommandType {
@@ -20,7 +22,7 @@ impl Display for CommandType {
                 CommandType::Move => "",
                 CommandType::Line => "l",
                 CommandType::Rectangle => "r",
-                CommandType::Text => "t",
+                CommandType::Text(_) => "t",
             }
         )
     }
@@ -65,29 +67,43 @@ impl Command {
     pub fn ctype(&self) -> CommandType {
         self.ctype.clone()
     }
+    pub fn set_ctype(&mut self, ct: CommandType) {
+        self.ctype = ct;
+    }
     pub fn coords(&self) -> Coords {
         self.coords.clone()
     }
 }
 
+pub enum FSMResult {
+    OkCommand(Command),
+    OkFSM(CommandFSM),
+    Err(char),
+}
+
 impl CommandFSM {
-    pub fn from(str: String) -> Result<Self, ()> {
+    pub fn from(str: String) -> FSMResult {
         let mut it = str.chars();
-        let mut ret = Self::new(it.next().unwrap());
+        let ret = Self::new(it.next().unwrap());
+        if let Err(c) = ret {
+            return FSMResult::Err(c);
+        }
+        let mut ret = ret.unwrap();
         for char in it {
             match ret.advance(char) {
-                Ok(_) => todo!(),
+                Ok(com) => return FSMResult::OkCommand(com),
                 Err(new_state) => ret = new_state,
             }
         }
-        Ok(ret)
+        FSMResult::OkFSM(ret)
     }
 
-    pub fn new(next_char: char) -> Self {
+    pub fn new(next_char: char) -> Result<Self, char> {
         let mut coords = None;
         let ctype = match next_char {
             'l' => CommandType::Line,
             'r' => CommandType::Rectangle,
+            't' => CommandType::Text(String::new()),
             'a' => {
                 coords = Some(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0)));
                 CommandType::Move
@@ -97,10 +113,11 @@ impl CommandFSM {
                 CommandType::Move
             }
             _ => {
-                panic!("Not valid command begin: {next_char}")
+                logging::error!("Not valid command begin: {next_char}");
+                return Err(next_char);
             }
         };
-        Self { coords, ctype }
+        Ok(Self { coords, ctype })
     }
 
     pub fn advance(self, next_char: char) -> Result<Command, Self> {
@@ -153,7 +170,10 @@ impl From<char> for Direction {
             DOWN => Direction::Down,
             UP => Direction::Up,
             RIGHT => Direction::Right,
-            _ => panic!("Not a Direction '{}'!", value),
+            _ => {
+                logging::error!("Not a Direction '{}'!", value);
+                panic!("Not a Direction '{}'!", value)
+            }
         }
     }
 }
@@ -177,7 +197,7 @@ impl Display for Direction {
 pub struct RelCoordPair(pub u32, pub Direction);
 
 impl RelCoordPair {
-    pub fn getCoords(&self, x: u32, y: u32) -> (u32, u32) {
+    pub fn get_coords(&self, x: u32, y: u32) -> (u32, u32) {
         match self.1 {
             Direction::Up => (x, y - self.0),
             Direction::Down => (x, y + self.0),
@@ -242,6 +262,20 @@ impl Display for RelCoord {
 pub enum FinishedRelCoord {
     OneCoord(RelCoordPair),
     TwoCoords(RelCoordPair, RelCoordPair),
+}
+
+impl FinishedRelCoord {
+    /// needs CursorSetter to be in context
+    pub fn resolve_fcp(&self) -> (u32, u32) {
+        let (x, y) = get_cursor_pos();
+        match self {
+            Self::OneCoord(rcp) => rcp.get_coords(x, y),
+            Self::TwoCoords(rcp, rcp2) => {
+                let (x, y) = rcp.get_coords(x, y);
+                rcp2.get_coords(x, y)
+            }
+        }
+    }
 }
 
 fn push_num(num: u32, digit: char) -> u32 {
