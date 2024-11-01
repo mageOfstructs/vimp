@@ -50,6 +50,7 @@ impl Display for CommandFSM {
 
 impl IntoView for CommandFSM {
     fn into_view(self) -> leptos::View {
+        #[allow(unused_braces)]
         view! {
             {self.to_string()}
         }
