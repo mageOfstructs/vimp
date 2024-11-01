@@ -5,4 +5,4 @@
 - [ ] undo last command
 - [ ] color support
 - [ ] finish goals
-- [ ] export
+- [x] export
