@@ -1,8 +1,11 @@
+use js_sys::Array;
+use leptos::web_sys::{Blob, Document, Url};
 use leptos::{
     component, create_signal, ev::KeyboardEvent, logging, provide_context, use_context, view,
     window, For, IntoView, ReadSignal, SignalUpdate, View, WriteSignal,
 };
 use regex::Regex;
+use wasm_bindgen::JsValue;
 
 use crate::{
     graphics::{Form, GraphicsItem, Line, Rect, Text},
@@ -69,7 +72,7 @@ pub fn get_cursor_pos() -> (u32, u32) {
 
 fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
     let cs = use_context::<CursorSetter>().unwrap();
-    let mut com = com.clone();
+    let com = com.clone();
     match com.ctype() {
         CommandType::Line => {
             logging::log!("Creating a line...");
@@ -108,6 +111,42 @@ fn Reader() -> impl IntoView {
     let (com, set_com) = create_signal(String::new());
     let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
+    let (limbo, set_limbo) = create_signal(Option::<Form>::None);
+
+    let (download_link, set_download_link) = create_signal(Option::<String>::None);
+    let export = move |_| {
+        let doc = match window().document() {
+            Some(doc) => doc,
+            None => {
+                logging::error!("Document property not found (this is a major invalid state)!");
+                panic!("Document no work");
+            }
+        };
+        let svg = match doc.get_element_by_id("svg_canvas") {
+            Some(el) => el,
+            None => {
+                logging::error!("BUG: svg canvas has wrong id!");
+                panic!();
+            }
+        }
+        .inner_html();
+        logging::log!("Svg Data: {svg}");
+        let blob_parts = Array::new_with_length(1);
+        blob_parts.set(0, JsValue::from_str(&svg));
+        let blob = match Blob::new_with_str_sequence(&blob_parts) {
+            Ok(blob) => blob,
+            Err(err) => {
+                logging::error!("Failed to create blob: {err:?}");
+                panic!()
+            }
+        };
+        match Url::create_object_url_with_blob(&blob) {
+            Ok(url) => set_download_link(Some(url)),
+            Err(err) => {
+                logging::error!("Failed to create URL: {err:?}")
+            }
+        }
+    };
 
     let on_keypress = move |evt: KeyboardEvent| {
         let mut next_char = evt.key();
@@ -127,7 +166,21 @@ fn Reader() -> impl IntoView {
         }
         if next_char == "Enter" {
             next_char = "\n".to_string();
+        } else if next_char == "r" {
+            set_forms.update(|vec| {
+                set_limbo(vec.pop());
+            });
+            return;
+        } else if next_char == "r" && evt.ctrl_key() {
+            set_forms.update(|vec| {
+                match limbo() {
+                    Some(form) => vec.push(form),
+                    None => logging::warn!("The void cannot be shaped"),
+                };
+            });
+            return;
         }
+
         if next_char.len() == 1 {
             let next_char = next_char.chars().next().unwrap();
             set_com.update(|str| str.push(next_char));
@@ -162,7 +215,15 @@ fn Reader() -> impl IntoView {
 
     view! {
         <p>Current command: {com}</p>
-        <svg tabindex="1" autofocus on:keydown=on_keypress width="100%" height="100%" style="position: absolute">
+        <button on:click={export}>Export</button>
+        {move || {
+            if let Some(url) = download_link() {
+                view! {
+                    <a href={url} download="image.svg">Click to Download</a>
+                }.into_view()
+            } else {view! { }.into_view()}
+        }}
+        <svg id="svg_canvas" tabindex="1" autofocus on:keydown=on_keypress width="100%" height="100%" style="position: absolute">
             <For each=forms
                 key=|el| {el.key()}
                 children= move |el| {
