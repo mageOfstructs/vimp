@@ -5,12 +5,10 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use leptos::logging;
-use leptos::ReadSignal;
 use leptos::{view, RwSignal};
 use leptos::{window, IntoView};
 
 use crate::parser::Command;
-use crate::parser::CommandFSM;
 use crate::parser::CommandType;
 use crate::parser::Coords;
 
@@ -38,8 +36,6 @@ macro_rules! gen_form {
         }
     };
 }
-
-type KeyType = u128;
 
 fn key_from_four(n1: u32, n2: u32, n3: u32, n4: u32) -> u128 {
     ((n1 as u128) << 96u128) + ((n2 as u128) << 64u128) + ((n3 as u128) << 32u128) + n4 as u128
