@@ -97,28 +97,7 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
                 }
             },
         },
-        CommandType::Text(_) => {
-            let user_text = loop {
-                match window()
-                    .prompt_with_message_and_default("Text:", "I'm such a silly boykisser")
-                {
-                    Ok(text) => match text {
-                        Some(text) => break text,
-                        None => {
-                            window()
-                                .alert_with_message("You gotta put something in there!")
-                                .unwrap();
-                        }
-                    },
-                    Err(jsval) => logging::warn!("User's fault: {jsval:?} (should be null)"),
-                }
-            };
-            // let user_text = while let Err(jsval) =
-            //     window().prompt_with_message_and_default("Text:", "I'm such a silly boykisser")
-            // {
-            //     logging::warn!("User's fault: {jsval:?} (should be null)");
-            // };
-            com.set_ctype(CommandType::Text(user_text));
+        CommandType::Text => {
             set_forms.update(|vec| vec.push(Form::Text(Text::from(com).unwrap())));
         }
     }

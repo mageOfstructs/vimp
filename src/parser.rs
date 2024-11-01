@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
 
-use leptos::{logging, use_context};
+use leptos::logging;
 use leptos::{view, IntoView};
 
 use crate::components::get_cursor_pos;
@@ -10,7 +10,7 @@ pub enum CommandType {
     Move,
     Line,
     Rectangle,
-    Text(String),
+    Text,
 }
 
 impl Display for CommandType {
@@ -22,7 +22,7 @@ impl Display for CommandType {
                 CommandType::Move => "",
                 CommandType::Line => "l",
                 CommandType::Rectangle => "r",
-                CommandType::Text(_) => "t",
+                CommandType::Text => "t",
             }
         )
     }
@@ -67,9 +67,6 @@ impl Command {
     pub fn ctype(&self) -> CommandType {
         self.ctype.clone()
     }
-    pub fn set_ctype(&mut self, ct: CommandType) {
-        self.ctype = ct;
-    }
     pub fn coords(&self) -> Coords {
         self.coords.clone()
     }
@@ -103,7 +100,7 @@ impl CommandFSM {
         let ctype = match next_char {
             'l' => CommandType::Line,
             'r' => CommandType::Rectangle,
-            't' => CommandType::Text(String::new()),
+            't' => CommandType::Text,
             'a' => {
                 coords = Some(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0)));
                 CommandType::Move

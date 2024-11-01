@@ -5,9 +5,9 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use leptos::logging;
-use leptos::IntoView;
 use leptos::ReadSignal;
 use leptos::{view, RwSignal};
+use leptos::{window, IntoView};
 
 use crate::parser::Command;
 use crate::parser::CommandFSM;
@@ -197,21 +197,38 @@ impl Text {
     pub fn from(command: Command) -> Result<Self, CommandType> {
         match command.ctype() {
             // TODO: has some repetition, CLEAN THAT UP
-            CommandType::Text(text) => match command.coords() {
-                Coords::AbsCoord(x, y) => Ok(Self {
-                    x: x.into(),
-                    y: y.into(),
-                    text: text.into(),
-                }),
-                Coords::RelCoord(fcp) => {
-                    let (x, y) = fcp.resolve_fcp();
-                    Ok(Self {
+            CommandType::Text => {
+                let text = loop {
+                    match window()
+                        .prompt_with_message_and_default("Text:", "I'm such a silly boykisser")
+                    {
+                        Ok(text) => match text {
+                            Some(text) => break text,
+                            None => {
+                                window()
+                                    .alert_with_message("You gotta put something in there!")
+                                    .unwrap();
+                            }
+                        },
+                        Err(jsval) => logging::warn!("User's fault: {jsval:?} (should be null)"),
+                    }
+                };
+                match command.coords() {
+                    Coords::AbsCoord(x, y) => Ok(Self {
                         x: x.into(),
                         y: y.into(),
                         text: text.into(),
-                    })
+                    }),
+                    Coords::RelCoord(fcp) => {
+                        let (x, y) = fcp.resolve_fcp();
+                        Ok(Self {
+                            x: x.into(),
+                            y: y.into(),
+                            text: text.into(),
+                        })
+                    }
                 }
-            },
+            }
             other => Err(other),
         }
     }
