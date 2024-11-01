@@ -14,6 +14,31 @@ use crate::parser::CommandFSM;
 use crate::parser::CommandType;
 use crate::parser::Coords;
 
+macro_rules! gen_form {
+    ($($type:ident),+) => {
+        #[derive(Clone)]
+        pub enum Form {
+            $($type($type)),+
+        }
+
+        impl GraphicsItem for Form {
+            fn key(&self) -> u128 {
+                match self {
+                    $(Self::$type(form) => form.key()),+
+                }
+            }
+        }
+
+        impl IntoView for Form {
+            fn into_view(self) -> leptos::View {
+                match self {
+                    $(Self::$type(form) => form.into_view()),+
+                }
+            }
+        }
+    };
+}
+
 type KeyType = u128;
 
 fn key_from_four(n1: u32, n2: u32, n3: u32, n4: u32) -> u128 {
@@ -26,32 +51,7 @@ pub trait GraphicsItem: Clone {
     fn key(&self) -> u128;
 }
 
-#[derive(Clone)]
-pub enum Form {
-    Line(Line),
-    Rect(Rect),
-    Text(Text),
-}
-
-impl GraphicsItem for Form {
-    fn key(&self) -> u128 {
-        match self {
-            Self::Line(l) => l.key(),
-            Self::Rect(r) => r.key(),
-            Self::Text(t) => t.key(),
-        }
-    }
-}
-
-impl IntoView for Form {
-    fn into_view(self) -> leptos::View {
-        match self {
-            Self::Line(l) => l.into_view(),
-            Self::Rect(r) => r.into_view(),
-            Self::Text(t) => t.into_view(),
-        }
-    }
-}
+gen_form!(Line, Rect, Text);
 
 #[derive(Clone)]
 pub struct Line {
