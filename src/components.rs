@@ -171,7 +171,7 @@ fn Reader() -> impl IntoView {
                 set_limbo(vec.pop());
             });
             return;
-        } else if next_char == "r" && evt.ctrl_key() {
+        } else if next_char == "R" {
             set_forms.update(|vec| {
                 match limbo() {
                     Some(form) => vec.push(form),
