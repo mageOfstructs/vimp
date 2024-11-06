@@ -31,7 +31,6 @@ pub fn Canvas() -> impl IntoView {
     provide_context(CursorSetter { x, y, setx, sety });
     view! {
         <Reader/>
-        <Cursor x={x} y={y}/>
     }
 }
 
@@ -91,14 +90,19 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
             Coords::AbsCoord(x, y) => {
                 (cs.setx)(x);
                 (cs.sety)(y);
+                logging::log!("New cursor pos: {}, {}", x, y);
             }
-            Coords::RelCoord(rc) => match rc {
-                FinishedRelCoord::OneCoord(rcp) => update_pos_relative(rcp, &cs),
-                FinishedRelCoord::TwoCoords(rcp1, rcp2) => {
-                    update_pos_relative(rcp1, &cs);
-                    update_pos_relative(rcp2, &cs)
-                }
-            },
+            Coords::RelCoord(rc) => {
+                let (x, y) = rc.resolve_fcp();
+                (cs.setx)(x);
+                (cs.sety)(y);
+                logging::log!("New cursor pos: {}, {}", x, y);
+            } //match rc {
+              //    FinishedRelCoord::OneCoord(rcp) => update_pos_relative(rcp, &cs),
+              //    FinishedRelCoord::TwoCoords(rcp1, rcp2) => {
+              //        update_pos_relative(rcp1, &cs);
+              //        update_pos_relative(rcp2, &cs)
+              //    }
         },
         CommandType::Text => {
             set_forms.update(|vec| vec.push(Form::Text(Text::from(com).unwrap())));
@@ -113,45 +117,10 @@ fn Reader() -> impl IntoView {
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
     let (limbo, set_limbo) = create_signal(Option::<Form>::None);
 
-    let (download_link, set_download_link) = create_signal(Option::<String>::None);
-    let export = move |_| {
-        let doc = match window().document() {
-            Some(doc) => doc,
-            None => {
-                logging::error!("Document property not found (this is a major invalid state)!");
-                panic!("Document no work");
-            }
-        };
-        let svg = match doc.get_element_by_id("svg_canvas") {
-            Some(el) => el,
-            None => {
-                logging::error!("BUG: svg canvas has wrong id!");
-                panic!();
-            }
-        }
-        .inner_html();
-        logging::log!("Svg Data: {svg}");
-        let blob_parts = Array::new_with_length(1);
-        blob_parts.set(0, JsValue::from_str(&svg));
-        let blob = match Blob::new_with_str_sequence(&blob_parts) {
-            Ok(blob) => blob,
-            Err(err) => {
-                logging::error!("Failed to create blob: {err:?}");
-                panic!()
-            }
-        };
-        match Url::create_object_url_with_blob(&blob) {
-            Ok(url) => set_download_link(Some(url)),
-            Err(err) => {
-                logging::error!("Failed to create URL: {err:?}")
-            }
-        }
-    };
-
     let on_keypress = move |evt: KeyboardEvent| {
         let mut next_char = evt.key();
         logging::log!("We got {next_char}!");
-        if next_char == "Backspace" {
+        if next_char == "Backspace" && !com().is_empty() {
             set_com.update(|str| {
                 str.pop();
             });
@@ -163,15 +132,14 @@ fn Reader() -> impl IntoView {
                 FSMResult::OkFSM(fsm) => Some(fsm),
                 FSMResult::Err(_) => None,
             });
-        }
-        if next_char == "Enter" {
+        } else if next_char == "Enter" {
             next_char = "\n".to_string();
-        } else if next_char == "r" {
+        } else if next_char == "u" {
             set_forms.update(|vec| {
                 set_limbo(vec.pop());
             });
             return;
-        } else if next_char == "R" {
+        } else if next_char == "U" {
             set_forms.update(|vec| {
                 match limbo() {
                     Some(form) => vec.push(form),
@@ -214,37 +182,87 @@ fn Reader() -> impl IntoView {
     };
 
     view! {
-        <p>Current command: {com}</p>
-        <button on:click={export}>Export</button>
-        {move || {
-            if let Some(url) = download_link() {
-                view! {
-                    <a href={url} download="image.svg">Click to Download</a>
-                }.into_view()
-            } else {view! { }.into_view()}
-        }}
-        <svg id="svg_canvas" tabindex="1" autofocus on:keydown=on_keypress width="100%" height="100%" style="position: absolute">
-            <For each=forms
-                key=|el| {el.key()}
-                children= move |el| {
-                    view! {{el.into_view()}}
-                }
-            />
-        </svg>
+        <ExportBtn/>
+        <div class="box">
+            <p>Current command: {com}</p>
+            <div class="container">
+            <svg id="svg_canvas" tabindex="1" autofocus on:keydown=on_keypress style="width: 100%; height: 100%; position: absolute">
+                <For each=forms
+                    key=|el| {el.key()}
+                    children= move |el| {
+                        view! {{el.into_view()}}
+                    }
+                />
+            </svg>
+            <Cursor/>
+            </div>
+        </div>
     }
 }
 
 #[component]
-fn Cursor(x: ReadSignal<u32>, y: ReadSignal<u32>) -> impl IntoView {
+fn ExportBtn() -> impl IntoView {
+    let (download_link, set_download_link) = create_signal(Option::<String>::None);
+    let export = move |_| {
+        let doc = match window().document() {
+            Some(doc) => doc,
+            None => {
+                logging::error!("Document property not found (this is a major invalid state)!");
+                panic!("Document no work");
+            }
+        };
+        let svg = match doc.get_element_by_id("svg_canvas") {
+            Some(el) => el,
+            None => {
+                logging::error!("BUG: svg canvas has wrong id!");
+                panic!();
+            }
+        }
+        .inner_html();
+        logging::log!("Svg Data: {svg}");
+        let blob_parts = Array::new_with_length(1);
+        blob_parts.set(0, JsValue::from_str(&svg));
+        let blob = match Blob::new_with_str_sequence(&blob_parts) {
+            Ok(blob) => blob,
+            Err(err) => {
+                logging::error!("Failed to create blob: {err:?}");
+                panic!()
+            }
+        };
+        match Url::create_object_url_with_blob(&blob) {
+            Ok(url) => set_download_link(Some(url)),
+            Err(err) => {
+                logging::error!("Failed to create URL: {err:?}")
+            }
+        }
+    };
+    view! {
+        <div style="position: absolute; top: 0%; right: 10%" min-width="20%">
+            <button on:click={export}>Export</button>
+            {move || {
+                if let Some(url) = download_link() {
+                    view! {
+                        <a href={url} download="image.svg">Click to Download</a>
+                    }.into_view()
+                } else {view! { }.into_view()}
+            }}
+        </div>
+    }
+}
+
+#[component]
+fn Cursor() -> impl IntoView {
+    let cs = use_context::<CursorSetter>().unwrap();
+    let (x, y) = (cs.x, cs.y);
     let style = move || {
         format!(
-            "position: relative; top: {}%; left: {}%; color: red",
+            "position: relative; top: {}%; left: {}%; color: red; display: inline",
             y(),
             x()
         )
     };
     view! {
-        <div style="width: 100%; height: 100%; z-index: 1; position: absolute">
+        <div style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
             <div style={style}>
                 UwU
             </div>
