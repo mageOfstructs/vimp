@@ -28,5 +28,5 @@
 ## Undo
 
 - Backspace works as expected
-- ``r``: undo last command executed
-- ``R``: redo last command, which has been undone
+- ``u``: undo last command executed
+- ``U``: redo last command, which has been undone
