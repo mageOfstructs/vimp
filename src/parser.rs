@@ -81,6 +81,9 @@ pub enum FSMResult {
 
 impl CommandFSM {
     pub fn from(str: String) -> FSMResult {
+        if str.is_empty() {
+            return FSMResult::Err('\0');
+        }
         let mut it = str.chars();
         let ret = Self::new(it.next().unwrap());
         if let Err(c) = ret {
@@ -106,8 +109,10 @@ impl CommandFSM {
                 coords = Some(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0)));
                 CommandType::Move
             }
-            '0'..'9' => {
-                coords = Some(CoordFSM::Rel(RelCoord::EnteringFirstNum(0)));
+            '0'..='9' => {
+                coords = Some(CoordFSM::Rel(RelCoord::EnteringFirstNum(
+                    next_char.to_digit(10).unwrap(),
+                )));
                 CommandType::Move
             }
             _ => {
@@ -121,8 +126,10 @@ impl CommandFSM {
     pub fn advance(self, next_char: char) -> Result<Command, Self> {
         match self.coords {
             None => match next_char {
-                '0'..'9' => Err(Self {
-                    coords: Some(CoordFSM::Rel(RelCoord::EnteringFirstNum(0))),
+                '0'..='9' => Err(Self {
+                    coords: Some(CoordFSM::Rel(RelCoord::EnteringFirstNum(
+                        next_char.to_digit(10).unwrap(),
+                    ))),
                     ctype: self.ctype,
                 }),
                 'a' => Err(Self {
@@ -277,7 +284,7 @@ impl FinishedRelCoord {
 }
 
 fn push_num(num: u32, digit: char) -> u32 {
-    num * 10 + digit.to_digit(10).unwrap() as u32
+    num * 10 + digit.to_digit(10).unwrap()
 }
 
 impl RelCoord {
@@ -363,7 +370,7 @@ impl AbsCoord {
     fn advance(self, next_char: char) -> Result<Coords, Self> {
         match self {
             Self::EnteringFirstNum(num) => match next_char {
-                '0'..'9' => Err(Self::EnteringFirstNum(push_num(num, next_char))),
+                '0'..='9' => Err(Self::EnteringFirstNum(push_num(num, next_char))),
                 ';' => Err(Self::EnteringSecondNum(num, 0)),
                 _ => {
                     logging::error!("Not part of AbsCoord Syntax (first num): {next_char}");
@@ -371,7 +378,7 @@ impl AbsCoord {
                 }
             },
             Self::EnteringSecondNum(num1, num) => match next_char {
-                '0'..'9' => Err(Self::EnteringSecondNum(num1, push_num(num, next_char))),
+                '0'..='9' => Err(Self::EnteringSecondNum(num1, push_num(num, next_char))),
                 ';' => Ok(Coords::AbsCoord(num1, num)),
                 _ => {
                     logging::error!("Not part of AbsCoord Syntax (second num): {next_char}");
