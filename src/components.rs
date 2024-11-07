@@ -1,8 +1,10 @@
 use js_sys::Array;
-use leptos::web_sys::{Blob, Document, Url};
+use leptos::ev::{self, MouseEvent};
+use leptos::web_sys::{Blob, Url};
+use leptos::window_event_listener;
 use leptos::{
-    component, create_signal, ev::KeyboardEvent, logging, provide_context, use_context, view,
-    window, For, IntoView, ReadSignal, SignalUpdate, View, WriteSignal,
+    component, create_signal, ev::KeyboardEvent, logging, on_cleanup, provide_context, use_context,
+    view, window, For, IntoView, ReadSignal, SignalUpdate, WriteSignal,
 };
 use regex::Regex;
 use wasm_bindgen::JsValue;
@@ -173,12 +175,15 @@ fn Reader() -> impl IntoView {
         }
     };
 
+    let handle = window_event_listener(ev::keydown, on_keypress);
+    on_cleanup(move || handle.remove());
+
     view! {
         <ExportBtn/>
         <div class="box">
             <p>Current command: {com}</p>
             <div class="container">
-            <svg id="svg_canvas" tabindex="1" autofocus on:keydown=on_keypress style="width: 100%; height: 100%; position: absolute">
+            <svg id="svg_canvas" style="width: 100%; height: 100%; position: absolute">
                 <For each=forms
                     key=|el| {el.key()}
                     children= move |el| {
@@ -242,6 +247,10 @@ fn ExportBtn() -> impl IntoView {
     }
 }
 
+fn mouseclick(evt: MouseEvent) {
+    logging::log!("Mouse click: {evt:?}");
+}
+
 #[component]
 fn Cursor() -> impl IntoView {
     let cs = use_context::<CursorSetter>().unwrap();
@@ -254,7 +263,7 @@ fn Cursor() -> impl IntoView {
         )
     };
     view! {
-        <div style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
+        <div on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
             <div style={style}>
                 UwU
             </div>
