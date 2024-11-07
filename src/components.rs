@@ -46,6 +46,7 @@ fn update_pos_relative(rcp: RelCoordPair, cs: &CursorSetter) {
 fn calc_coords(coords: &Coords, cs: &CursorSetter) -> (u32, u32, u32, u32) {
     let x = (cs.x)();
     let y = (cs.y)();
+
     logging::log!("Got cursor pos...");
     match coords {
         Coords::AbsCoord(x2, y2) => (x, y, *x2, *y2),
@@ -86,24 +87,15 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
             set_forms
                 .update(|vec| vec.push(Form::Rect(Rect::from(calc_coords(&com.coords(), &cs)))));
         }
-        CommandType::Move => match com.coords() {
-            Coords::AbsCoord(x, y) => {
-                (cs.setx)(x);
-                (cs.sety)(y);
-                logging::log!("New cursor pos: {}, {}", x, y);
-            }
-            Coords::RelCoord(rc) => {
-                let (x, y) = rc.resolve_fcp();
-                (cs.setx)(x);
-                (cs.sety)(y);
-                logging::log!("New cursor pos: {}, {}", x, y);
-            } //match rc {
-              //    FinishedRelCoord::OneCoord(rcp) => update_pos_relative(rcp, &cs),
-              //    FinishedRelCoord::TwoCoords(rcp1, rcp2) => {
-              //        update_pos_relative(rcp1, &cs);
-              //        update_pos_relative(rcp2, &cs)
-              //    }
-        },
+        CommandType::Move => {
+            let (x, y) = match com.coords() {
+                Coords::AbsCoord(x, y) => (x, y),
+                Coords::RelCoord(rc) => rc.resolve_fcp(),
+            };
+            (cs.setx)(x);
+            (cs.sety)(y);
+            logging::log!("New cursor pos: {}, {}", x, y);
+        }
         CommandType::Text => {
             set_forms.update(|vec| vec.push(Form::Text(Text::from(com).unwrap())));
         }
