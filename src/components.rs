@@ -49,20 +49,12 @@ fn calc_coords(coords: &Coords, cs: &CursorSetter) -> (u32, u32, u32, u32) {
     let x = (cs.x)();
     let y = (cs.y)();
 
-    logging::log!("Got cursor pos...");
     match coords {
         Coords::AbsCoord(x2, y2) => (x, y, *x2, *y2),
-        Coords::RelCoord(fcp) => match fcp {
-            FinishedRelCoord::OneCoord(rcp) => {
-                let (x2, y2) = rcp.get_coords(x, y);
-                (x, y, x2, y2)
-            }
-            FinishedRelCoord::TwoCoords(rcp, rcp2) => {
-                let (x2, y2) = rcp.get_coords(x, y);
-                let (x2, y2) = rcp2.get_coords(x2, y2);
-                (x, y, x2, y2)
-            }
-        },
+        Coords::RelCoord(fcp) => {
+            let (x2, y2) = fcp.resolve_fcp();
+            (x, y, x2, y2)
+        }
     }
 }
 
