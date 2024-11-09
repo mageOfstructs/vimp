@@ -85,11 +85,10 @@ impl CommandFSM {
             return FSMResult::Err('\0');
         }
         let mut it = str.chars();
-        let ret = Self::new(it.next().unwrap());
-        if let Err(c) = ret {
-            return FSMResult::Err(c);
-        }
-        let mut ret = ret.unwrap();
+        let mut ret = match Self::new(it.next().unwrap()) {
+            Ok(fsm) => fsm,
+            Err(c) => return FSMResult::Err(c),
+        };
         for char in it {
             match ret.advance(char) {
                 Ok(com) => return FSMResult::OkCommand(com),
