@@ -1,8 +1,10 @@
 use js_sys::Array;
-use leptos::web_sys::{Blob, Document, Url};
+use leptos::ev::{self, MouseEvent};
+use leptos::web_sys::{Blob, Url};
+use leptos::window_event_listener;
 use leptos::{
-    component, create_signal, ev::KeyboardEvent, logging, provide_context, use_context, view,
-    window, For, IntoView, ReadSignal, SignalUpdate, View, WriteSignal,
+    component, create_signal, ev::KeyboardEvent, logging, on_cleanup, provide_context, use_context,
+    view, window, For, IntoView, ReadSignal, SignalUpdate, WriteSignal,
 };
 use regex::Regex;
 use wasm_bindgen::JsValue;
@@ -46,20 +48,13 @@ fn update_pos_relative(rcp: RelCoordPair, cs: &CursorSetter) {
 fn calc_coords(coords: &Coords, cs: &CursorSetter) -> (u32, u32, u32, u32) {
     let x = (cs.x)();
     let y = (cs.y)();
-    logging::log!("Got cursor pos...");
+
     match coords {
         Coords::AbsCoord(x2, y2) => (x, y, *x2, *y2),
-        Coords::RelCoord(fcp) => match fcp {
-            FinishedRelCoord::OneCoord(rcp) => {
-                let (x2, y2) = rcp.get_coords(x, y);
-                (x, y, x2, y2)
-            }
-            FinishedRelCoord::TwoCoords(rcp, rcp2) => {
-                let (x2, y2) = rcp.get_coords(x, y);
-                let (x2, y2) = rcp2.get_coords(x2, y2);
-                (x, y, x2, y2)
-            }
-        },
+        Coords::RelCoord(fcp) => {
+            let (x2, y2) = fcp.resolve_fcp();
+            (x, y, x2, y2)
+        }
     }
 }
 
@@ -86,24 +81,15 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
             set_forms
                 .update(|vec| vec.push(Form::Rect(Rect::from(calc_coords(&com.coords(), &cs)))));
         }
-        CommandType::Move => match com.coords() {
-            Coords::AbsCoord(x, y) => {
-                (cs.setx)(x);
-                (cs.sety)(y);
-                logging::log!("New cursor pos: {}, {}", x, y);
-            }
-            Coords::RelCoord(rc) => {
-                let (x, y) = rc.resolve_fcp();
-                (cs.setx)(x);
-                (cs.sety)(y);
-                logging::log!("New cursor pos: {}, {}", x, y);
-            } //match rc {
-              //    FinishedRelCoord::OneCoord(rcp) => update_pos_relative(rcp, &cs),
-              //    FinishedRelCoord::TwoCoords(rcp1, rcp2) => {
-              //        update_pos_relative(rcp1, &cs);
-              //        update_pos_relative(rcp2, &cs)
-              //    }
-        },
+        CommandType::Move => {
+            let (x, y) = match com.coords() {
+                Coords::AbsCoord(x, y) => (x, y),
+                Coords::RelCoord(rc) => rc.resolve_fcp(),
+            };
+            (cs.setx)(x);
+            (cs.sety)(y);
+            logging::log!("New cursor pos: {}, {}", x, y);
+        }
         CommandType::Text => {
             set_forms.update(|vec| vec.push(Form::Text(Text::from(com).unwrap())));
         }
@@ -181,12 +167,15 @@ fn Reader() -> impl IntoView {
         }
     };
 
+    let handle = window_event_listener(ev::keydown, on_keypress);
+    on_cleanup(move || handle.remove());
+
     view! {
         <ExportBtn/>
         <div class="box">
             <p>Current command: {com}</p>
             <div class="container">
-            <svg id="svg_canvas" tabindex="1" autofocus on:keydown=on_keypress style="width: 100%; height: 100%; position: absolute">
+            <svg id="svg_canvas" style="width: 100%; height: 100%; position: absolute">
                 <For each=forms
                     key=|el| {el.key()}
                     children= move |el| {
@@ -250,6 +239,10 @@ fn ExportBtn() -> impl IntoView {
     }
 }
 
+fn mouseclick(evt: MouseEvent) {
+    logging::log!("Mouse click: {evt:?}");
+}
+
 #[component]
 fn Cursor() -> impl IntoView {
     let cs = use_context::<CursorSetter>().unwrap();
@@ -262,7 +255,7 @@ fn Cursor() -> impl IntoView {
         )
     };
     view! {
-        <div style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
+        <div on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
             <div style={style}>
                 UwU
             </div>

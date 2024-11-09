@@ -1,3 +1,4 @@
+use leptos::Signal;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::DefaultHasher;
@@ -40,7 +41,7 @@ macro_rules! gen_form {
 fn key_from_four(n1: u32, n2: u32, n3: u32, n4: u32) -> u128 {
     ((n1 as u128) << 96u128) + ((n2 as u128) << 64u128) + ((n3 as u128) << 32u128) + n4 as u128
 }
-fn format_css(c: u32) -> String {
+fn format_css<T: Display>(c: T) -> String {
     format!("{}%", c)
 }
 pub trait GraphicsItem: Clone {
@@ -90,10 +91,10 @@ impl Line {
         impl Fn() -> String,
         impl Fn() -> String,
     ) {
-        let x1 = self.x1.clone();
-        let y1 = self.y1.clone();
-        let x2 = self.x2.clone();
-        let y2 = self.y2.clone();
+        let x1 = self.x1;
+        let y1 = self.y1;
+        let x2 = self.x2;
+        let y2 = self.y2;
         (
             move || format_css(x1()),
             move || format_css((y1)()),
@@ -121,7 +122,7 @@ impl GraphicsItem for Line {
             (self.y2.read_only())(),
         );
         logging::log!("finish keygen");
-        return ret;
+        ret
     }
 }
 
@@ -129,8 +130,8 @@ impl GraphicsItem for Line {
 pub struct Rect {
     x: RwSignal<u32>,
     y: RwSignal<u32>,
-    width: RwSignal<u32>,
-    height: RwSignal<u32>,
+    width: RwSignal<i32>,
+    height: RwSignal<i32>,
     rx: RwSignal<u32>,
     ry: RwSignal<u32>,
     border_color: RwSignal<String>,
@@ -142,8 +143,8 @@ impl Rect {
         Self {
             x: RwSignal::new(x),
             y: RwSignal::new(y),
-            width: RwSignal::new(x2 - x),
-            height: RwSignal::new(y2 - y),
+            width: RwSignal::new(x2 as i32 - x as i32), // if this underflows, we're cooked
+            height: RwSignal::new(y2 as i32 - y as i32), // if this underflows, we're cooked
             rx: RwSignal::new(Default::default()),
             ry: RwSignal::new(Default::default()),
             border_color: RwSignal::new(Default::default()),
@@ -151,8 +152,9 @@ impl Rect {
         }
     }
     pub fn from(tuple: (u32, u32, u32, u32)) -> Self {
-        let (x, y, width, height) = tuple;
-        Self::new(x, y, width, height)
+        logging::log!("Creating new rect with {tuple:?}");
+        let (x, y, x2, y2) = tuple;
+        Self::new(x, y, x2, y2)
     }
 
     fn css_coords_reactive(
@@ -163,10 +165,18 @@ impl Rect {
         impl Fn() -> String,
         impl Fn() -> String,
     ) {
-        let x1 = self.x.clone();
-        let y1 = self.y.clone();
-        let width = self.width.clone();
-        let height = self.height.clone();
+        let mut x1: Signal<u32> = Signal::from(self.x);
+        let mut y1: Signal<u32> = self.y.into();
+        let mut width: Signal<i32> = self.width.into();
+        let mut height: Signal<i32> = self.height.into();
+        if width() < 0 {
+            x1 = Signal::derive(move || (x1() as i32 + width()) as u32);
+            width = Signal::derive(move || -width());
+        }
+        if height() < 0 {
+            y1 = Signal::derive(move || (y1() as i32 + height()) as u32);
+            height = Signal::derive(move || -height());
+        }
         (
             move || format_css(x1()),
             move || format_css((y1)()),
@@ -178,7 +188,12 @@ impl Rect {
 
 impl GraphicsItem for Rect {
     fn key(&self) -> u128 {
-        key_from_four((self.x)(), (self.y)(), (self.width)(), (self.height)())
+        key_from_four(
+            (self.x)(),
+            (self.y)(),
+            (self.width)() as u32,
+            (self.height)() as u32,
+        )
     }
 }
 
@@ -192,7 +207,6 @@ pub struct Text {
 impl Text {
     pub fn from(command: Command) -> Result<Self, CommandType> {
         match command.ctype() {
-            // TODO: has some repetition, CLEAN THAT UP
             CommandType::Text => {
                 let text = loop {
                     match window()
@@ -209,29 +223,23 @@ impl Text {
                         Err(jsval) => logging::warn!("User's fault: {jsval:?} (should be null)"),
                     }
                 };
-                match command.coords() {
-                    Coords::AbsCoord(x, y) => Ok(Self {
-                        x: x.into(),
-                        y: y.into(),
-                        text: text.into(),
-                    }),
-                    Coords::RelCoord(fcp) => {
-                        let (x, y) = fcp.resolve_fcp();
-                        Ok(Self {
-                            x: x.into(),
-                            y: y.into(),
-                            text: text.into(),
-                        })
-                    }
-                }
+                let (x, y) = match command.coords() {
+                    Coords::AbsCoord(x, y) => (x, y),
+                    Coords::RelCoord(fcp) => fcp.resolve_fcp(),
+                };
+                Ok(Self {
+                    x: x.into(),
+                    y: y.into(),
+                    text: text.into(),
+                })
             }
             other => Err(other),
         }
     }
 
     fn css_coords_reactive(&self) -> (impl Fn() -> String, impl Fn() -> String) {
-        let x = self.x.clone();
-        let y = self.y.clone();
+        let x = self.x;
+        let y = self.y;
         (move || format_css((x)()), move || format_css((y)()))
     }
 }
@@ -261,6 +269,13 @@ impl IntoView for Line {
 impl IntoView for Rect {
     fn into_view(self) -> leptos::View {
         let (x, y, width, height) = self.css_coords_reactive();
+        logging::log!(
+            "Rendering new rect with {},{},{},{}",
+            x(),
+            y(),
+            width(),
+            height()
+        );
         view! {
             <rect x={x} y={y} width={width} height={height} fill={self.inner_color}/>
         }
