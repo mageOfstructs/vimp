@@ -2,6 +2,7 @@ use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
 use leptos::window_event_listener;
+use leptos::Children;
 use leptos::{
     component, create_signal, ev::KeyboardEvent, logging, on_cleanup, provide_context, use_context,
     view, window, For, IntoView, ReadSignal, SignalUpdate, WriteSignal,
@@ -208,6 +209,15 @@ fn ExportBtn() -> impl IntoView {
             }
         }
         .inner_html();
+        let svg = format!(
+            "<?xml version=\"1.0\" standalone=\"no\"?>
+<svg height=\"100%\" width=\"100%\" version=\"1.1\"
+     xmlns=\"http://www.w3.org/2000/svg\">
+            {}
+</svg>
+",
+            svg
+        );
         logging::log!("Svg Data: {svg}");
         let blob_parts = Array::new_with_length(1);
         blob_parts.set(0, JsValue::from_str(&svg));
@@ -259,6 +269,15 @@ fn Cursor() -> impl IntoView {
             <div style={style}>
                 UwU
             </div>
+        </div>
+    }
+}
+
+#[component]
+pub fn Selectable(edit: ReadSignal<bool>, children: Children) -> impl IntoView {
+    view! {
+        <div style="display: inline; margin: 0" class={if edit() {"selectable"} else {""}}>
+            {children()}
         </div>
     }
 }
