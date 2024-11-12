@@ -214,6 +214,7 @@ pub struct Text {
     x: RwSignal<u32>,
     y: RwSignal<u32>,
     text: RwSignal<String>,
+    color: RwSignal<String>,
 }
 
 impl Text {
@@ -293,7 +294,7 @@ impl IntoView for Text {
     fn into_view(self) -> leptos::View {
         let (x, y) = self.css_coords_reactive();
         view! {
-            <text x={x} y={y}>{self.text}</text>
+            <text x={x} y={y} fill={self.color}>{self.text}</text>
         }
         .into_view()
     }
@@ -370,10 +371,12 @@ impl TryFrom<Command> for Text {
                     }
                 };
                 let (x, y) = command.coords().resolve();
+                let color = command.color().unwrap_or("red".to_string());
                 Ok(Self {
                     x: x.into(),
                     y: y.into(),
                     text: text.into(),
+                    color: color.into(),
                 })
             }
             other => Err(other),
