@@ -390,6 +390,10 @@ impl RelCoord {
             Self::FirstNumAndDirection(ref rcp) => match next_char {
                 '\n' => Ok(FinishedRelCoord::OneCoord(rcp.clone())),
                 ';' => Err(Self::EnteringSecondNum(rcp.clone(), 0)),
+                '0'..='9' => Err(Self::EnteringSecondNum(
+                    rcp.clone(),
+                    next_char.to_digit(10).unwrap(),
+                )),
                 _ => {
                     logging::error!("Not part of RelCoord Syntax (second num): {next_char}");
                     Err(self)
