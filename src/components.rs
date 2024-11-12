@@ -10,6 +10,7 @@ use leptos::{
 use regex::Regex;
 use wasm_bindgen::JsValue;
 
+use crate::graphics::Circle;
 use crate::{
     graphics::{Form, GraphicsItem, Line, Rect, Text},
     parser::{
@@ -93,6 +94,9 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
         }
         CommandType::Text => {
             set_forms.update(|vec| vec.push(Form::Text(Text::from(com).unwrap())));
+        }
+        CommandType::Circle(_) => {
+            set_forms.update(|vec| vec.push(Form::Circle(Circle::from(com).unwrap())))
         }
     }
 }

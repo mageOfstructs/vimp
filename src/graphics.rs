@@ -1,3 +1,4 @@
+use crate::components::Selectable;
 use leptos::Signal;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -33,6 +34,17 @@ macro_rules! gen_form {
                 match self {
                     $(Self::$type(form) => form.into_view()),+
                 }
+
+                // let (edit, set_edit) = create_signal(true);
+                // view! {
+                //     <Selectable edit={edit}>
+                //     {
+                //         match self {
+                //             $(Self::$type(form) => form.into_view()),+
+                //         }
+                //     }
+                //     </Selectable>
+                // }
             }
         }
     };
@@ -48,7 +60,7 @@ pub trait GraphicsItem: Clone {
     fn key(&self) -> u128;
 }
 
-gen_form!(Line, Rect, Text);
+gen_form!(Line, Rect, Text, Circle);
 
 #[derive(Clone)]
 pub struct Line {
@@ -223,10 +235,7 @@ impl Text {
                         Err(jsval) => logging::warn!("User's fault: {jsval:?} (should be null)"),
                     }
                 };
-                let (x, y) = match command.coords() {
-                    Coords::AbsCoord(x, y) => (x, y),
-                    Coords::RelCoord(fcp) => fcp.resolve_fcp(),
-                };
+                let (x, y) = command.coords().resolve();
                 Ok(Self {
                     x: x.into(),
                     y: y.into(),
@@ -241,6 +250,39 @@ impl Text {
         let x = self.x;
         let y = self.y;
         (move || format_css((x)()), move || format_css((y)()))
+    }
+}
+
+#[derive(Clone)]
+pub struct Circle {
+    radius: RwSignal<u32>,
+    x: RwSignal<u32>,
+    y: RwSignal<u32>,
+}
+
+impl Circle {
+    pub fn new(radius: u32, x: u32, y: u32) -> Self {
+        Self {
+            radius: RwSignal::new(radius),
+            x: RwSignal::new(x),
+            y: RwSignal::new(y),
+        }
+    }
+
+    pub fn from(com: Command) -> Result<Self, ()> {
+        match com.ctype() {
+            CommandType::Circle(rad) => {
+                let (x, y) = com.coords().resolve();
+                Ok(Self::new(rad, x, y))
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+impl GraphicsItem for Circle {
+    fn key(&self) -> u128 {
+        (self.radius)() as u128
     }
 }
 
@@ -288,6 +330,15 @@ impl IntoView for Text {
         let (x, y) = self.css_coords_reactive();
         view! {
             <text x={x} y={y}>{self.text}</text>
+        }
+        .into_view()
+    }
+}
+
+impl IntoView for Circle {
+    fn into_view(self) -> leptos::View {
+        view! {
+            <circle r={move || format_css((self.radius)())} cx={move || format_css((self.x)())} cy={move || format_css((self.y)())}/>
         }
         .into_view()
     }
