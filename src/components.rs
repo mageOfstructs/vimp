@@ -73,8 +73,8 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
         CommandType::Line => {
             logging::log!("Creating a line...");
             set_forms.update(|vec| {
-                let line = Line::from(calc_coords(&com.coords(), &cs));
-                logging::log!("Created a line: {:?}", line.clone().into_view());
+                let line = Line::try_from(com).unwrap();
+                // logging::log!("Created a line: {:?}", line.clone().into_view());
                 vec.push(Form::Line(line));
                 logging::log!("Updated vec");
             });
@@ -93,10 +93,10 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
             logging::log!("New cursor pos: {}, {}", x, y);
         }
         CommandType::Text => {
-            set_forms.update(|vec| vec.push(Form::Text(Text::from(com).unwrap())));
+            set_forms.update(|vec| vec.push(Form::Text(Text::try_from(com).unwrap())));
         }
         CommandType::Circle(_) => {
-            set_forms.update(|vec| vec.push(Form::Circle(Circle::from(com).unwrap())))
+            set_forms.update(|vec| vec.push(Form::Circle(Circle::try_from(com).unwrap())))
         }
     }
 }
@@ -125,12 +125,12 @@ fn Reader() -> impl IntoView {
             });
         } else if next_char == "Enter" {
             next_char = "\n".to_string();
-        } else if next_char == "u" {
+        } else if next_char == "u" && com().len() == 0 {
             set_forms.update(|vec| {
                 set_limbo(vec.pop());
             });
             return;
-        } else if next_char == "U" {
+        } else if next_char == "U" && com().len() == 0 {
             set_forms.update(|vec| {
                 match limbo() {
                     Some(form) => vec.push(form),

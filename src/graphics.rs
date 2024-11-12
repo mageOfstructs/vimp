@@ -1,3 +1,4 @@
+use crate::components::get_cursor_pos;
 use crate::components::Selectable;
 use leptos::Signal;
 use std::fmt::Display;
@@ -12,7 +13,6 @@ use leptos::{window, IntoView};
 
 use crate::parser::Command;
 use crate::parser::CommandType;
-use crate::parser::Coords;
 
 macro_rules! gen_form {
     ($($type:ident),+) => {
@@ -68,7 +68,7 @@ pub struct Line {
     y1: RwSignal<u32>,
     x2: RwSignal<u32>,
     y2: RwSignal<u32>,
-    color: String,
+    color: RwSignal<String>,
 }
 
 impl Display for Line {
@@ -91,7 +91,7 @@ impl Line {
             y1: RwSignal::new(pair.1),
             x2: RwSignal::new(pair.2),
             y2: RwSignal::new(pair.3),
-            color: Default::default(),
+            color: RwSignal::new("red".to_string()),
         }
     }
 
@@ -217,35 +217,6 @@ pub struct Text {
 }
 
 impl Text {
-    pub fn from(command: Command) -> Result<Self, CommandType> {
-        match command.ctype() {
-            CommandType::Text => {
-                let text = loop {
-                    match window()
-                        .prompt_with_message_and_default("Text:", "I'm such a silly boykisser")
-                    {
-                        Ok(text) => match text {
-                            Some(text) => break text,
-                            None => {
-                                window()
-                                    .alert_with_message("You gotta put something in there!")
-                                    .unwrap();
-                            }
-                        },
-                        Err(jsval) => logging::warn!("User's fault: {jsval:?} (should be null)"),
-                    }
-                };
-                let (x, y) = command.coords().resolve();
-                Ok(Self {
-                    x: x.into(),
-                    y: y.into(),
-                    text: text.into(),
-                })
-            }
-            other => Err(other),
-        }
-    }
-
     fn css_coords_reactive(&self) -> (impl Fn() -> String, impl Fn() -> String) {
         let x = self.x;
         let y = self.y;
@@ -268,16 +239,6 @@ impl Circle {
             y: RwSignal::new(y),
         }
     }
-
-    pub fn from(com: Command) -> Result<Self, ()> {
-        match com.ctype() {
-            CommandType::Circle(rad) => {
-                let (x, y) = com.coords().resolve();
-                Ok(Self::new(rad, x, y))
-            }
-            _ => Err(()),
-        }
-    }
 }
 
 impl GraphicsItem for Circle {
@@ -295,14 +256,15 @@ impl GraphicsItem for Text {
     }
 }
 
-const DEFAULT_STYLE: &str = "stroke:red;stroke-width=2";
+const DEFAULT_STYLE: &str = ";stroke-width=2";
 
 impl IntoView for Line {
     fn into_view(self) -> leptos::View {
         logging::log!("called into_view() on Line");
         let (x1, y1, x2, y2) = self.css_coords_reactive();
+        let style = move || format!("stroke:{}{}", (self.color)(), DEFAULT_STYLE);
         view! {
-            <line x1={x1} y1={y1} x2={x2} y2={y2} style={DEFAULT_STYLE}/>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} style={style}/>
         }
         .into_view()
     }
@@ -341,5 +303,76 @@ impl IntoView for Circle {
             <circle r={move || format_css((self.radius)())} cx={move || format_css((self.x)())} cy={move || format_css((self.y)())}/>
         }
         .into_view()
+    }
+}
+
+impl TryFrom<Command> for Line {
+    type Error = CommandType;
+    fn try_from(value: Command) -> Result<Self, Self::Error> {
+        if let CommandType::Line = value.ctype() {
+            let ((x, y), (x2, y2)) = (get_cursor_pos(), value.coords().resolve());
+            let color = value.color().unwrap_or("red".to_string());
+            Ok(Line {
+                x1: RwSignal::new(x),
+                y1: RwSignal::new(y),
+                x2: RwSignal::new(x2),
+                y2: RwSignal::new(y2),
+                color: RwSignal::new(color),
+            })
+        } else {
+            Err(value.ctype())
+        }
+    }
+}
+
+impl From<Command> for Rect {
+    fn from(value: Command) -> Self {
+        let ((x, y), (x2, y2)) = (get_cursor_pos(), value.coords().resolve());
+        Self::from((x, y, x2, y2))
+    }
+}
+
+impl TryFrom<Command> for Text {
+    type Error = CommandType;
+    fn try_from(command: Command) -> Result<Self, Self::Error> {
+        match command.ctype() {
+            CommandType::Text => {
+                let text = loop {
+                    match window()
+                        .prompt_with_message_and_default("Text:", "I'm such a silly boykisser")
+                    {
+                        Ok(text) => match text {
+                            Some(text) => break text,
+                            None => {
+                                window()
+                                    .alert_with_message("You gotta put something in there!")
+                                    .unwrap();
+                            }
+                        },
+                        Err(jsval) => logging::warn!("User's fault: {jsval:?} (should be null)"),
+                    }
+                };
+                let (x, y) = command.coords().resolve();
+                Ok(Self {
+                    x: x.into(),
+                    y: y.into(),
+                    text: text.into(),
+                })
+            }
+            other => Err(other),
+        }
+    }
+}
+
+impl TryFrom<Command> for Circle {
+    type Error = CommandType;
+    fn try_from(com: Command) -> Result<Self, Self::Error> {
+        match com.ctype() {
+            CommandType::Circle(rad) => {
+                let (x, y) = com.coords().resolve();
+                Ok(Self::new(rad, x, y))
+            }
+            other => Err(other),
+        }
     }
 }
