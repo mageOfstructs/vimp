@@ -229,6 +229,7 @@ pub struct Circle {
     radius: RwSignal<u32>,
     x: RwSignal<u32>,
     y: RwSignal<u32>,
+    color: RwSignal<String>,
 }
 
 impl Circle {
@@ -237,6 +238,7 @@ impl Circle {
             radius: RwSignal::new(radius),
             x: RwSignal::new(x),
             y: RwSignal::new(y),
+            color: RwSignal::new("red".to_string()),
         }
     }
 }
@@ -281,7 +283,7 @@ impl IntoView for Rect {
             height()
         );
         view! {
-            <rect x={x} y={y} width={width} height={height} fill={self.inner_color}/>
+            <rect x={x} y={y} rx={self.rx} ry={self.ry} width={width} height={height} fill={self.inner_color}/>
         }
         .into_view()
     }
@@ -300,7 +302,7 @@ impl IntoView for Text {
 impl IntoView for Circle {
     fn into_view(self) -> leptos::View {
         view! {
-            <circle r={move || format_css((self.radius)())} cx={move || format_css((self.x)())} cy={move || format_css((self.y)())}/>
+            <circle r={move || format_css((self.radius)())} cx={move || format_css((self.x)())} cy={move || format_css((self.y)())} fill={self.color}/>
         }
         .into_view()
     }
@@ -325,10 +327,25 @@ impl TryFrom<Command> for Line {
     }
 }
 
-impl From<Command> for Rect {
-    fn from(value: Command) -> Self {
-        let ((x, y), (x2, y2)) = (get_cursor_pos(), value.coords().resolve());
-        Self::from((x, y, x2, y2))
+impl TryFrom<Command> for Rect {
+    type Error = CommandType;
+    fn try_from(command: Command) -> Result<Self, Self::Error> {
+        if let CommandType::Rectangle = command.ctype() {
+            let color = command.color().unwrap_or("red".to_string());
+            let ((x, y), (x2, y2)) = (get_cursor_pos(), command.coords().resolve());
+            Ok(Self {
+                x: RwSignal::new(x),
+                y: RwSignal::new(y),
+                width: RwSignal::new(x2 as i32 - x as i32), // if this underflows, we're cooked
+                height: RwSignal::new(y2 as i32 - y as i32), // if this underflows, we're cooked
+                rx: RwSignal::new(Default::default()),
+                ry: RwSignal::new(Default::default()),
+                border_color: RwSignal::new(Default::default()),
+                inner_color: RwSignal::new(color),
+            })
+        } else {
+            Err(command.ctype())
+        }
     }
 }
 
@@ -370,7 +387,13 @@ impl TryFrom<Command> for Circle {
         match com.ctype() {
             CommandType::Circle(rad) => {
                 let (x, y) = com.coords().resolve();
-                Ok(Self::new(rad, x, y))
+                let color = com.color().unwrap_or("red".to_string());
+                Ok(Self {
+                    radius: RwSignal::new(rad),
+                    x: RwSignal::new(x),
+                    y: RwSignal::new(y),
+                    color: RwSignal::new(color),
+                })
             }
             other => Err(other),
         }

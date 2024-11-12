@@ -74,14 +74,11 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
             logging::log!("Creating a line...");
             set_forms.update(|vec| {
                 let line = Line::try_from(com).unwrap();
-                // logging::log!("Created a line: {:?}", line.clone().into_view());
                 vec.push(Form::Line(line));
-                logging::log!("Updated vec");
             });
         }
         CommandType::Rectangle => {
-            set_forms
-                .update(|vec| vec.push(Form::Rect(Rect::from(calc_coords(&com.coords(), &cs)))));
+            set_forms.update(|vec| vec.push(Form::Rect(Rect::try_from(com).unwrap())));
         }
         CommandType::Move => {
             let (x, y) = match com.coords() {
