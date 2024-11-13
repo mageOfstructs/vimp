@@ -108,33 +108,39 @@ fn Reader() -> impl IntoView {
     let on_keypress = move |evt: KeyboardEvent| {
         let mut next_char = evt.key();
         logging::log!("We got {next_char}!");
-        if next_char == "Backspace" && !com().is_empty() {
-            set_com.update(|str| {
-                str.pop();
-            });
-            set_fsm(match CommandFSM::from(com()) {
-                FSMResult::OkCommand(com) => {
-                    parse_command(com, set_forms);
-                    return;
-                }
-                FSMResult::OkFSM(fsm) => Some(fsm),
-                FSMResult::Err(_) => None,
-            });
-        } else if next_char == "Enter" {
-            next_char = "\n".to_string();
-        } else if next_char == "u" && com().len() == 0 {
-            set_forms.update(|vec| {
-                set_limbo(vec.pop());
-            });
-            return;
-        } else if next_char == "U" && com().len() == 0 {
-            set_forms.update(|vec| {
-                match limbo() {
-                    Some(form) => vec.push(form),
-                    None => logging::warn!("The void cannot be shaped"),
-                };
-            });
-            return;
+        match &*next_char {
+            "Backspace" if !com().is_empty() => {
+                set_com.update(|str| {
+                    str.pop();
+                });
+                set_fsm(match CommandFSM::from(com()) {
+                    FSMResult::OkCommand(com) => {
+                        parse_command(com, set_forms);
+                        return;
+                    }
+                    FSMResult::OkFSM(fsm) => Some(fsm),
+                    FSMResult::Err(_) => None,
+                });
+                return;
+            }
+            "u" if fsm().is_none() => {
+                set_forms.update(|vec| {
+                    set_limbo(vec.pop());
+                });
+                return;
+            }
+            "U" if fsm().is_none() => {
+                set_forms.update(|vec| {
+                    match limbo() {
+                        Some(form) => vec.push(form),
+                        None => logging::warn!("The void cannot be shaped"),
+                    };
+                });
+                return;
+            }
+            "Enter" => next_char = "\n".to_string(),
+
+            _ => {}
         }
 
         if next_char.len() == 1 {
