@@ -1,16 +1,21 @@
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
-use leptos::window_event_listener;
 use leptos::Children;
+use leptos::RwSignal;
+use leptos::Signal;
+use leptos::SignalWith;
 use leptos::{
     component, create_signal, ev::KeyboardEvent, logging, on_cleanup, provide_context, use_context,
     view, window, For, IntoView, ReadSignal, SignalUpdate, WriteSignal,
 };
+use leptos::{window_event_listener, SignalSet};
 use regex::Regex;
+use std::env::Args;
+use std::hash::{DefaultHasher, Hasher};
 use wasm_bindgen::JsValue;
 
-use crate::graphics::Circle;
+use crate::graphics::{key_from_four, Circle};
 use crate::{
     graphics::{Form, GraphicsItem, Line, Rect, Text},
     parser::{
@@ -18,6 +23,8 @@ use crate::{
         RelCoordPair,
     },
 };
+
+// TOOD: refactor into separate files
 
 #[derive(Clone)]
 struct CursorSetter {
@@ -66,20 +73,19 @@ pub fn get_cursor_pos() -> (u32, u32) {
     ((cs.x)(), (cs.y)())
 }
 
-fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
+fn parse_command(
+    com: Command,
+    set_forms: WriteSignal<Vec<Form>>,
+    set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
+) {
     let cs = use_context::<CursorSetter>().unwrap();
     let com = com.clone();
-    match com.ctype() {
+    let form = match com.ctype() {
         CommandType::Line => {
             logging::log!("Creating a line...");
-            set_forms.update(|vec| {
-                let line = Line::try_from(com).unwrap();
-                vec.push(Form::Line(line));
-            });
+            Some(Form::Line(Line::try_from(com).unwrap()))
         }
-        CommandType::Rectangle => {
-            set_forms.update(|vec| vec.push(Form::Rect(Rect::try_from(com).unwrap())));
-        }
+        CommandType::Rectangle => Some(Form::Rect(Rect::try_from(com).unwrap())),
         CommandType::Move => {
             let (x, y) = match com.coords() {
                 Coords::AbsCoord(x, y) => (x, y),
@@ -88,15 +94,43 @@ fn parse_command(com: Command, set_forms: WriteSignal<Vec<Form>>) {
             (cs.setx)(x);
             (cs.sety)(y);
             logging::log!("New cursor pos: {}, {}", x, y);
+            None
         }
-        CommandType::Text => {
-            set_forms.update(|vec| vec.push(Form::Text(Text::try_from(com).unwrap())));
-        }
-        CommandType::Circle(_) => {
-            set_forms.update(|vec| vec.push(Form::Circle(Circle::try_from(com).unwrap())))
-        }
+        CommandType::Text => Some(Form::Text(Text::try_from(com).unwrap())),
+        CommandType::Circle(_) => Some(Form::Circle(Circle::try_from(com).unwrap())),
+    };
+    if let Some(form) = form {
+        set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
+        set_forms.update(|vec| vec.push(form));
     }
 }
+
+#[derive(Clone)]
+pub struct SelectMode(ReadSignal<bool>);
+
+impl FnOnce<()> for SelectMode {
+    type Output = bool;
+    extern "rust-call" fn call_once(self, _args: ()) -> Self::Output {
+        (self.0)()
+    }
+}
+impl FnMut<()> for SelectMode {
+    extern "rust-call" fn call_mut(&mut self, _args: ()) -> Self::Output {
+        (self.0)()
+    }
+}
+impl Fn<()> for SelectMode {
+    extern "rust-call" fn call(&self, _args: ()) -> Self::Output {
+        (self.0)()
+    }
+}
+
+// impl Fn for SelectMode<> {
+//     type Output = bool;
+//     extern "rust-call" fn call(&self, args: Args) -> Self::Output {
+//         (self.0)()
+//     }
+// }
 
 #[component]
 fn Reader() -> impl IntoView {
@@ -104,18 +138,52 @@ fn Reader() -> impl IntoView {
     let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
     let (limbo, set_limbo) = create_signal(Option::<Form>::None);
+    let (select_buffer, set_select_buffer) = create_signal(Option::<Vec<Form>>::None);
+    let (select_mode, set_select_mode) = create_signal(false);
+    let (overlays, set_overlays) = create_signal(Vec::<SelectableOverlayData>::new());
+    provide_context(overlays);
+    provide_context(SelectMode(select_mode));
 
     let on_keypress = move |evt: KeyboardEvent| {
         let mut next_char = evt.key();
         logging::log!("We got {next_char}!");
+        if select_mode() {
+            if next_char.len() == 1 {
+                set_com.update(|com| com.push(next_char.chars().next().unwrap()));
+            } else if next_char == "Enter" {
+                logging::log!("We got da '{}'", com());
+                let i = Namer::get_index(com());
+                // set_select_mode.update(|val| {
+                //     *val = !*val;
+                // });
+                set_com.update(|str| str.clear());
+
+                logging::log!("This should be index '{}'", i);
+                if i >= forms().len() || i >= overlays().len() {
+                    logging::log!("But this index is out of bounce!");
+                } else {
+                    logging::log!("Updating the selected prop");
+                    overlays.with(|vec| vec[i].selected.set(true));
+                    set_select_buffer.set(Some(vec![forms()[i].clone()]));
+                    logging::log!("Successfully updated the selected prop");
+                }
+            }
+            return;
+        }
         match &*next_char {
+            "e" if fsm().is_none() => {
+                set_select_mode.update(|val| {
+                    *val = !*val;
+                });
+                return;
+            }
             "Backspace" if !com().is_empty() => {
                 set_com.update(|str| {
                     str.pop();
                 });
                 set_fsm(match CommandFSM::from(com()) {
                     FSMResult::OkCommand(com) => {
-                        parse_command(com, set_forms);
+                        parse_command(com, set_forms, set_overlays);
                         return;
                     }
                     FSMResult::OkFSM(fsm) => Some(fsm),
@@ -150,7 +218,7 @@ fn Reader() -> impl IntoView {
                 match fsm() {
                     Some(fsm) => match fsm.advance(next_char) {
                         Ok(com) => {
-                            parse_command(com, set_forms);
+                            parse_command(com, set_forms, set_overlays);
                             logging::log!("Finished Command parsing");
                             set_fsm(None);
                             logging::log!("Updated State 1");
@@ -260,19 +328,143 @@ fn mouseclick(evt: MouseEvent) {
     logging::log!("Mouse click: {evt:?}");
 }
 
+#[derive(Clone, Debug)]
+pub struct SelectableOverlayData {
+    top: Signal<u32>,
+    left: Signal<u32>,
+    width: Signal<u32>,
+    height: Signal<u32>,
+    selected: RwSignal<bool>,
+}
+
+// impl IntoView for SelectableOverlayData {
+//     fn into_view(self) -> leptos::View {
+//         view! {
+//             <SelectableOverlay top={self.top} left={self.left} width={self.width} height={self.height}/>
+//         }
+//     }
+// }
+
+impl SelectableOverlayData {
+    pub fn new(
+        top: Signal<u32>,
+        left: Signal<u32>,
+        width: Signal<u32>,
+        height: Signal<u32>,
+    ) -> Self {
+        Self {
+            top,
+            left,
+            width,
+            height,
+            selected: RwSignal::new(false),
+        }
+    }
+    fn key(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        hasher.write_u32((self.top)());
+        hasher.write_u32((self.left)());
+        hasher.write_u32((self.width)());
+        hasher.write_u32((self.height)());
+        // hasher.write_u8((self.selected)() as u8);
+        hasher.finish()
+    }
+}
+
+#[component]
+fn SelectableOverlay(
+    top: Signal<u32>,
+    left: Signal<u32>,
+    selected: ReadSignal<bool>,
+    namer: ReadSignal<Namer>,
+    set_namer: WriteSignal<Namer>,
+) -> impl IntoView {
+    let style = move || {
+        format!(
+            "position: absolute; top: {}%; left: {}%; width: 5%; height: 5%; border: 2px inset; border-radius: 10px",
+            top(),
+            left(),
+        )
+    };
+    let class = move || format!("selectable {}", if selected() { "selected" } else { "" });
+    let name = namer().next_name();
+    set_namer.update(|namer| namer.inc(0));
+    view! {
+        <div class={class} style={style}>{name}</div>
+    }
+}
+
+#[derive(Clone)]
+pub struct Namer {
+    cur_name: Vec<char>,
+}
+impl Namer {
+    pub fn get_index(name: String) -> usize {
+        name.chars()
+            .enumerate()
+            .map(|(i, c)| (c as usize - 'a' as usize) * 26_usize.pow(i as u32))
+            .sum()
+    }
+    pub fn new() -> Self {
+        Self {
+            cur_name: vec!['a'],
+        }
+    }
+    fn inc(&mut self, idx: usize) {
+        if self.cur_name.len() > idx {
+            self.cur_name[idx] = (self.cur_name[idx] as u8 + 1) as char;
+        } else {
+            self.cur_name.push('a');
+        }
+        if self.cur_name[idx] as u8 == 123 {
+            self.cur_name[idx] = 'a';
+            self.inc(idx + 1);
+        }
+    }
+    pub fn next_name(&mut self) -> String {
+        let mut ret = String::with_capacity(self.cur_name.len());
+        // i know, there is an iterator for that
+        for i in 0..self.cur_name.len() {
+            ret.push(self.cur_name[i])
+        }
+        logging::log!("Namer: returning {ret}!");
+        self.inc(0);
+        ret
+    }
+}
+
 #[component]
 fn Cursor() -> impl IntoView {
     let cs = use_context::<CursorSetter>().unwrap();
     let (x, y) = (cs.x, cs.y);
     let style = move || {
         format!(
-            "position: relative; top: {}%; left: {}%; color: red; display: inline",
+            "position: absolute; top: {}%; left: {}%; color: red; display: inline; z-index: 2",
             y(),
             x()
         )
     };
+    let select_mode = use_context::<SelectMode>().unwrap();
+    let overlays = use_context::<ReadSignal<Vec<SelectableOverlayData>>>().unwrap();
     view! {
-        <div on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
+        <div id="overlay" on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
+    {move || {
+                if select_mode() {
+                    let (namer, set_namer) = create_signal(Namer::new());
+                    view! {
+                        <For
+                            each=overlays
+                            key=|el| el.key()
+                            children=move |el| {
+                                logging::log!("auf bessere Zeiten warten");
+                            view! {
+                                <SelectableOverlay top={el.top} left={el.left} selected={el.selected.read_only()} namer={namer} set_namer={set_namer}/>
+                            }}
+                        />
+
+                    }
+                } else {view! {}.into_view()}
+            }}
             <div style={style}>
                 UwU
             </div>

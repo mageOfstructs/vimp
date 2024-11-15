@@ -1,6 +1,12 @@
 use crate::components::get_cursor_pos;
+use crate::components::SelectMode;
 use crate::components::Selectable;
+use crate::components::SelectableOverlayData;
+use leptos::use_context;
+use leptos::ReadSignal;
 use leptos::Signal;
+use leptos::SignalUpdate;
+use leptos::WriteSignal;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::DefaultHasher;
@@ -16,7 +22,7 @@ use crate::parser::CommandType;
 
 macro_rules! gen_form {
     ($($type:ident),+) => {
-        #[derive(Clone)]
+        #[derive(Clone, Debug)]
         pub enum Form {
             $($type($type)),+
         }
@@ -27,6 +33,11 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.key()),+
                 }
             }
+            fn get_overlay_dims(&self) -> SelectableOverlayData {
+                match self {
+                    $(Self::$type(form) => form.get_overlay_dims()),+
+                }
+            }
         }
 
         impl IntoView for Form {
@@ -34,23 +45,12 @@ macro_rules! gen_form {
                 match self {
                     $(Self::$type(form) => form.into_view()),+
                 }
-
-                // let (edit, set_edit) = create_signal(true);
-                // view! {
-                //     <Selectable edit={edit}>
-                //     {
-                //         match self {
-                //             $(Self::$type(form) => form.into_view()),+
-                //         }
-                //     }
-                //     </Selectable>
-                // }
             }
         }
     };
 }
 
-fn key_from_four(n1: u32, n2: u32, n3: u32, n4: u32) -> u128 {
+pub fn key_from_four(n1: u32, n2: u32, n3: u32, n4: u32) -> u128 {
     ((n1 as u128) << 96u128) + ((n2 as u128) << 64u128) + ((n3 as u128) << 32u128) + n4 as u128
 }
 fn format_css<T: Display>(c: T) -> String {
@@ -58,11 +58,12 @@ fn format_css<T: Display>(c: T) -> String {
 }
 pub trait GraphicsItem: Clone {
     fn key(&self) -> u128;
+    fn get_overlay_dims(&self) -> SelectableOverlayData;
 }
 
 gen_form!(Line, Rect, Text, Circle);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Line {
     x1: RwSignal<u32>,
     y1: RwSignal<u32>,
@@ -136,14 +137,32 @@ impl GraphicsItem for Line {
         logging::log!("finish keygen");
         ret
     }
+    fn get_overlay_dims(&self) -> SelectableOverlayData {
+        let mut x2 = self.x2.read_only();
+        let mut x1 = self.x1.read_only();
+        let mut y2 = self.y2.read_only();
+        let mut y1 = self.y1.read_only();
+        if y1() > y2() {
+            y1 = y2;
+            y2 = self.y1.read_only();
+        }
+        if x1() > x2() {
+            x1 = x2;
+            x2 = self.x1.read_only();
+        }
+        let width = Signal::derive(move || (x2)() - (x1)());
+        let height = Signal::derive(move || (y2)() - (y1)());
+
+        SelectableOverlayData::new(y1.into(), x1.into(), width, height)
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Rect {
     x: RwSignal<u32>,
     y: RwSignal<u32>,
-    width: RwSignal<i32>,
-    height: RwSignal<i32>,
+    width: RwSignal<u32>,
+    height: RwSignal<u32>,
     rx: RwSignal<u32>,
     ry: RwSignal<u32>,
     border_color: RwSignal<String>,
@@ -151,23 +170,23 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub fn new(x: u32, y: u32, x2: u32, y2: u32) -> Self {
-        Self {
-            x: RwSignal::new(x),
-            y: RwSignal::new(y),
-            width: RwSignal::new(x2 as i32 - x as i32), // if this underflows, we're cooked
-            height: RwSignal::new(y2 as i32 - y as i32), // if this underflows, we're cooked
-            rx: RwSignal::new(Default::default()),
-            ry: RwSignal::new(Default::default()),
-            border_color: RwSignal::new(Default::default()),
-            inner_color: RwSignal::new("red".to_string()),
-        }
-    }
-    pub fn from(tuple: (u32, u32, u32, u32)) -> Self {
-        logging::log!("Creating new rect with {tuple:?}");
-        let (x, y, x2, y2) = tuple;
-        Self::new(x, y, x2, y2)
-    }
+    // pub fn new(x: u32, y: u32, x2: u32, y2: u32) -> Self {
+    //     Self {
+    //         x: RwSignal::new(x),
+    //         y: RwSignal::new(y),
+    //         width: RwSignal::new(x2 as i32 - x as i32), // if this underflows, we're cooked
+    //         height: RwSignal::new(y2 as i32 - y as i32), // if this underflows, we're cooked
+    //         rx: RwSignal::new(Default::default()),
+    //         ry: RwSignal::new(Default::default()),
+    //         border_color: RwSignal::new(Default::default()),
+    //         inner_color: RwSignal::new("red".to_string()),
+    //     }
+    // }
+    // pub fn from(tuple: (u32, u32, u32, u32)) -> Self {
+    //     logging::log!("Creating new rect with {tuple:?}");
+    //     let (x, y, x2, y2) = tuple;
+    //     Self::new(x, y, x2, y2)
+    // }
 
     fn css_coords_reactive(
         &self,
@@ -179,16 +198,16 @@ impl Rect {
     ) {
         let mut x1: Signal<u32> = Signal::from(self.x);
         let mut y1: Signal<u32> = self.y.into();
-        let mut width: Signal<i32> = self.width.into();
-        let mut height: Signal<i32> = self.height.into();
-        if width() < 0 {
-            x1 = Signal::derive(move || (x1() as i32 + width()) as u32);
-            width = Signal::derive(move || -width());
-        }
-        if height() < 0 {
-            y1 = Signal::derive(move || (y1() as i32 + height()) as u32);
-            height = Signal::derive(move || -height());
-        }
+        let mut width: Signal<u32> = self.width.into();
+        let mut height: Signal<u32> = self.height.into();
+        // if width() < 0 {
+        //     x1 = Signal::derive(move || (x1() as i32 + width()) as u32);
+        //     width = Signal::derive(move || -width());
+        // }
+        // if height() < 0 {
+        //     y1 = Signal::derive(move || (y1() as i32 + height()) as u32);
+        //     height = Signal::derive(move || -height());
+        // }
         (
             move || format_css(x1()),
             move || format_css((y1)()),
@@ -207,13 +226,22 @@ impl GraphicsItem for Rect {
             (self.height)() as u32,
         )
     }
+    fn get_overlay_dims(&self) -> SelectableOverlayData {
+        SelectableOverlayData::new(
+            self.y.into(),
+            self.x.into(),
+            self.width.into(),
+            self.height.into(),
+        )
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Text {
     x: RwSignal<u32>,
     y: RwSignal<u32>,
     text: RwSignal<String>,
+    font_size: RwSignal<u32>,
     color: RwSignal<String>,
 }
 
@@ -225,7 +253,7 @@ impl Text {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Circle {
     radius: RwSignal<u32>,
     x: RwSignal<u32>,
@@ -248,6 +276,20 @@ impl GraphicsItem for Circle {
     fn key(&self) -> u128 {
         (self.radius)() as u128
     }
+    fn get_overlay_dims(&self) -> SelectableOverlayData {
+        let x = self.x.read_only();
+        let y = self.y.read_only();
+        let radius = self.radius.read_only();
+
+        let x = Signal::derive(move || x().checked_sub(radius()).unwrap_or(0));
+        let y = Signal::derive(move || y().checked_sub(radius()).unwrap_or(0));
+        SelectableOverlayData::new(
+            x,
+            y,
+            Signal::derive(move || radius() * 2),
+            Signal::derive(move || radius() * 2),
+        )
+    }
 }
 
 impl GraphicsItem for Text {
@@ -256,6 +298,16 @@ impl GraphicsItem for Text {
         ((((self.x)() as u128) << 32u128) + (self.y)() as u128).hash(&mut hasher);
         (self.text)().hash(&mut hasher);
         hasher.finish() as u128
+    }
+    fn get_overlay_dims(&self) -> SelectableOverlayData {
+        let font_size = self.font_size.read_only();
+        let text = self.text.read_only();
+        SelectableOverlayData::new(
+            self.x.into(),
+            self.y.into(),
+            Signal::derive(move || font_size() * text().len() as u32),
+            self.font_size.into(),
+        )
     }
 }
 
@@ -333,12 +385,22 @@ impl TryFrom<Command> for Rect {
     fn try_from(command: Command) -> Result<Self, Self::Error> {
         if let CommandType::Rectangle = command.ctype() {
             let color = command.color().unwrap_or("red".to_string());
-            let ((x, y), (x2, y2)) = (get_cursor_pos(), command.coords().resolve());
+            let ((mut x, mut y), (x2, y2)) = (get_cursor_pos(), command.coords().resolve());
+            let mut width: i32 = x2 as i32 - x as i32;
+            let mut height = y2 as i32 - y as i32;
+            if width < 0 {
+                x = (x as i32 + width) as u32;
+                width = -width;
+            }
+            if height < 0 {
+                y = (y as i32 + height) as u32;
+                height = -height;
+            }
             Ok(Self {
                 x: RwSignal::new(x),
                 y: RwSignal::new(y),
-                width: RwSignal::new(x2 as i32 - x as i32), // if this underflows, we're cooked
-                height: RwSignal::new(y2 as i32 - y as i32), // if this underflows, we're cooked
+                width: RwSignal::new(width as u32), // if this underflows, we're cooked
+                height: RwSignal::new(height as u32), // if this underflows, we're cooked
                 rx: RwSignal::new(Default::default()),
                 ry: RwSignal::new(Default::default()),
                 border_color: RwSignal::new(Default::default()),
@@ -376,6 +438,7 @@ impl TryFrom<Command> for Text {
                     x: x.into(),
                     y: y.into(),
                     text: text.into(),
+                    font_size: Default::default(),
                     color: color.into(),
                 })
             }
