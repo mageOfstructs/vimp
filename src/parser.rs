@@ -11,6 +11,7 @@ pub enum CommandType {
     Line,
     Rectangle,
     Text,
+    Circle(u32),
 }
 
 impl Display for CommandType {
@@ -23,6 +24,7 @@ impl Display for CommandType {
                 CommandType::Line => "l",
                 CommandType::Rectangle => "r",
                 CommandType::Text => "t",
+                CommandType::Circle(_) => "c",
             }
         )
     }
@@ -30,38 +32,55 @@ impl Display for CommandType {
 
 #[derive(Debug, Clone)]
 pub struct CommandFSM {
-    coords: Option<CoordFSM>,
+    coords: Option<Result<Coords, CoordFSM>>,
     ctype: CommandType,
+    color: Option<String>,
 }
 
-impl Display for CommandFSM {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(
-            f,
-            "{}{}",
-            self.ctype,
-            match self.coords {
-                None => "".to_string(),
-                Some(ref coords) => coords.to_string(),
-            }
-        )
-    }
-}
+// impl Display for CommandFSM {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+//         write!(
+//             f,
+//             "{}{}",
+//             self.ctype,
+//             match self.coords {
+//                 None => "".to_string(),
+//                 Some(ref coords) => coords.to_string(),
+//             }
+//         )
+//     }
+// }
 
-impl IntoView for CommandFSM {
-    fn into_view(self) -> leptos::View {
-        #[allow(unused_braces)]
-        view! {
-            {self.to_string()}
-        }
-        .into_view()
-    }
-}
+// impl IntoView for CommandFSM {
+//     fn into_view(self) -> leptos::View {
+//         #[allow(unused_braces)]
+//         view! {
+//             {self.to_string()}
+//         }
+//         .into_view()
+//     }
+// }
 
 #[derive(Debug, Clone)]
 pub struct Command {
     coords: Coords,
     ctype: CommandType,
+    color: Option<String>,
+}
+
+impl From<CommandFSM> for Command {
+    fn from(value: CommandFSM) -> Self {
+        let coords: Coords = match value.coords {
+            None => Coords::from_cursor(),
+            Some(Ok(coords)) => coords,
+            Some(Err(fsm)) => Coords::from(fsm),
+        };
+        Self {
+            coords,
+            ctype: value.ctype,
+            color: value.color,
+        }
+    }
 }
 
 impl Command {
@@ -70,6 +89,9 @@ impl Command {
     }
     pub fn coords(&self) -> Coords {
         self.coords.clone()
+    }
+    pub fn color(&self) -> Option<String> {
+        self.color.clone()
     }
 }
 
@@ -104,14 +126,15 @@ impl CommandFSM {
             'l' => CommandType::Line,
             'r' => CommandType::Rectangle,
             't' => CommandType::Text,
+            'c' => CommandType::Circle(0),
             'a' => {
-                coords = Some(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0)));
+                coords = Some(Err(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0))));
                 CommandType::Move
             }
             '0'..='9' => {
-                coords = Some(CoordFSM::Rel(RelCoord::EnteringFirstNum(
+                coords = Some(Err(CoordFSM::Rel(RelCoord::EnteringFirstNum(
                     next_char.to_digit(10).unwrap(),
-                )));
+                ))));
                 CommandType::Move
             }
             _ => {
@@ -119,37 +142,89 @@ impl CommandFSM {
                 return Err(next_char);
             }
         };
-        Ok(Self { coords, ctype })
+        Ok(Self {
+            coords,
+            ctype,
+            color: None,
+        })
     }
 
-    pub fn advance(self, next_char: char) -> Result<Command, Self> {
-        match self.coords {
-            None => match next_char {
-                '0'..='9' => Err(Self {
-                    coords: Some(CoordFSM::Rel(RelCoord::EnteringFirstNum(
-                        next_char.to_digit(10).unwrap(),
-                    ))),
-                    ctype: self.ctype,
-                }),
-                'a' => Err(Self {
-                    coords: Some(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0))),
-                    ctype: self.ctype,
-                }),
+    pub fn advance(mut self, next_char: char) -> Result<Command, Self> {
+        if next_char == '\n' {
+            return Ok(Command::from(self));
+        }
+        if next_char == '@' {
+            logging::log!("Reading into color buffer from now on");
+            return Err(Self {
+                color: Some(String::with_capacity(5)),
+                ..self
+            });
+        }
+        if let Some(ref mut str) = self.color
+            && let Some(Ok(_)) = self.coords
+        {
+            logging::log!("Got part of color: {next_char}");
+            return match next_char {
+                '\n' | ';' => Ok(Command::from(self)),
                 _ => {
-                    logging::error!("Not valid coord begin: {next_char}");
-                    Err(self)
+                    str.push(next_char);
+                    Err(Self {
+                        color: Some(str.to_string()),
+                        ..self
+                    })
                 }
-            },
-            Some(fsm) => match fsm.advance(next_char) {
-                Ok(coords) => Ok(Command {
-                    coords,
-                    ctype: self.ctype,
-                }),
-                Err(next_state) => Err(Self {
-                    coords: Some(next_state),
-                    ctype: self.ctype,
-                }),
-            },
+            };
+        } else {
+            match self.coords {
+                None => match next_char {
+                    '0'..='9' => Err(Self {
+                        coords: Some(Err(CoordFSM::Rel(RelCoord::EnteringFirstNum(
+                            next_char.to_digit(10).unwrap(),
+                        )))),
+                        ..self
+                    }),
+                    'a' => Err(Self {
+                        coords: Some(Err(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0)))),
+                        ..self
+                    }),
+                    _ => {
+                        logging::error!("Not valid coord begin: {next_char}");
+                        Err(self)
+                    }
+                },
+                Some(ref fsm) => match fsm {
+                    Ok(coords) => match self.ctype {
+                        CommandType::Circle(num) => match next_char {
+                            '0'..='9' => Err(Self {
+                                ctype: CommandType::Circle(push_num(num, next_char)),
+                                ..self
+                            }),
+                            ';' => Ok(Command {
+                                coords: coords.clone(),
+                                ctype: self.ctype,
+                                color: None,
+                            }),
+                            c => {
+                                logging::error!("Not part of Circle Radius Syntax: {c}");
+                                Err(self)
+                            }
+                        },
+                        _ => unreachable!(),
+                    },
+                    Err(fsm) => match fsm.clone().advance(next_char) {
+                        Ok(coords) => match self.ctype {
+                            _ => Err(Self {
+                                coords: Some(Ok(coords)),
+                                ..self
+                            }),
+                        },
+                        Err(next_state) => Err(Self {
+                            coords: Some(Err(next_state)),
+                            ..self
+                        }),
+                    },
+                },
+            }
         }
     }
 }
@@ -223,6 +298,17 @@ enum RelCoord {
     FirstNumAndDirection(RelCoordPair),
     EnteringSecondNum(RelCoordPair, u32),
     BothNums(RelCoordPair, RelCoordPair),
+}
+
+impl From<RelCoord> for Coords {
+    fn from(value: RelCoord) -> Self {
+        match value {
+            RelCoord::FirstNumAndDirection(rcp) => {
+                Coords::RelCoord(FinishedRelCoord::OneCoord(rcp))
+            }
+            _ => panic!(),
+        }
+    }
 }
 
 trait AutoHide {
@@ -303,6 +389,10 @@ impl RelCoord {
             Self::FirstNumAndDirection(ref rcp) => match next_char {
                 '\n' => Ok(FinishedRelCoord::OneCoord(rcp.clone())),
                 ';' => Err(Self::EnteringSecondNum(rcp.clone(), 0)),
+                '0'..='9' => Err(Self::EnteringSecondNum(
+                    rcp.clone(),
+                    next_char.to_digit(10).unwrap(),
+                )),
                 _ => {
                     logging::error!("Not part of RelCoord Syntax (second num): {next_char}");
                     Err(self)
@@ -341,10 +431,41 @@ pub enum Coords {
     RelCoord(FinishedRelCoord),
 }
 
+impl From<CoordFSM> for Coords {
+    fn from(value: CoordFSM) -> Self {
+        match value {
+            CoordFSM::Abs(abs) => abs.get_coords(),
+            CoordFSM::Rel(rc) => Coords::from(rc),
+        }
+    }
+}
+
+impl Coords {
+    pub fn from_cursor() -> Self {
+        let (x, y) = get_cursor_pos();
+        Self::AbsCoord(x, y)
+    }
+    pub fn resolve(&self) -> (u32, u32) {
+        match self {
+            Coords::AbsCoord(x, y) => (*x, *y),
+            Coords::RelCoord(fcp) => fcp.resolve_fcp(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum AbsCoord {
     EnteringFirstNum(u32),
     EnteringSecondNum(u32, u32),
+}
+
+impl AbsCoord {
+    fn get_coords(&self) -> Coords {
+        match self {
+            Self::EnteringFirstNum(num) => Coords::AbsCoord(*num, 0),
+            Self::EnteringSecondNum(num, num2) => Coords::AbsCoord(*num, *num2),
+        }
+    }
 }
 
 impl Display for AbsCoord {
@@ -418,6 +539,18 @@ impl CoordFSM {
                 Ok(coords) => Ok(Coords::RelCoord(coords)),
                 Err(next_state) => Err(Self::Rel(next_state)),
             },
+        }
+    }
+}
+
+impl From<Coords> for CoordFSM {
+    fn from(value: Coords) -> Self {
+        match value {
+            Coords::AbsCoord(x, y) => Self::Abs(AbsCoord::EnteringSecondNum(x, y)),
+            Coords::RelCoord(frc) => {
+                let (x, y) = frc.resolve_fcp();
+                Self::Abs(AbsCoord::EnteringSecondNum(x, y))
+            }
         }
     }
 }

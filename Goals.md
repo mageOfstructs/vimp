@@ -1,8 +1,14 @@
 # Goals
 
-- [ ] editing support
+- [ ] select mode
+  - [ ] copy
+  - [ ] move
+  - [ ] delete
+  - [ ] macro integration (when it's done)
+- [ ] group support
 - [ ] optionally enter starting point for form in command
-- [ ] undo last command
-- [ ] color support
+- [x] undo last command
+- [x] color support
+- [ ] macro support
 - [ ] finish goals
 - [x] export

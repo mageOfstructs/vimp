@@ -24,6 +24,7 @@
   
 - Text: ``t<coords_of_starting_point>``
   - You will be prompted to enter a text
+- Circle: ``c<coords_of_middle_point><radius>``
 
 ## Undo
 
