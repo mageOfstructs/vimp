@@ -171,6 +171,9 @@ fn Reader() -> impl IntoView {
             return;
         }
         match &*next_char {
+            "Escape" => {
+                set_com.update(|str| str.clear());
+            }
             "e" if fsm().is_none() => {
                 set_select_mode.update(|val| {
                     *val = !*val;

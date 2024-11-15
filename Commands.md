@@ -31,3 +31,4 @@
 - Backspace works as expected
 - ``u``: undo last command executed
 - ``U``: redo last command, which has been undone
+  - Press escape to clear command buffer (delete current command)
