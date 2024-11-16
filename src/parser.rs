@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
 
 use leptos::logging;
-use leptos::{view, IntoView};
 
 use crate::components::get_cursor_pos;
 
@@ -302,12 +301,16 @@ enum RelCoord {
 
 impl From<RelCoord> for Coords {
     fn from(value: RelCoord) -> Self {
-        match value {
-            RelCoord::FirstNumAndDirection(rcp) => {
-                Coords::RelCoord(FinishedRelCoord::OneCoord(rcp))
+        let ret = match value {
+            RelCoord::FirstNumAndDirection(rcp) => FinishedRelCoord::OneCoord(rcp),
+            RelCoord::EnteringFirstNum(_) => {
+                FinishedRelCoord::OneCoord(RelCoordPair(0, Direction::Up))
             }
-            _ => panic!(),
-        }
+            RelCoord::EnteringSecondNum(rcp, _) => FinishedRelCoord::OneCoord(rcp),
+            RelCoord::BothNums(rcp1, rcp2) => FinishedRelCoord::TwoCoords(rcp1, rcp2),
+        };
+
+        Coords::RelCoord(ret)
     }
 }
 
@@ -355,9 +358,8 @@ pub enum FinishedRelCoord {
 }
 
 impl FinishedRelCoord {
-    /// needs CursorSetter to be in context
-    pub fn resolve_fcp(&self) -> (u32, u32) {
-        let (x, y) = get_cursor_pos();
+    pub fn resolve_with_offset(&self, off: (u32, u32)) -> (u32, u32) {
+        let (x, y) = off;
         match self {
             Self::OneCoord(rcp) => rcp.get_coords(x, y),
             Self::TwoCoords(rcp, rcp2) => {
@@ -365,6 +367,11 @@ impl FinishedRelCoord {
                 rcp2.get_coords(x, y)
             }
         }
+    }
+
+    /// needs CursorSetter to be in context
+    pub fn resolve_fcp(&self) -> (u32, u32) {
+        self.resolve_with_offset(get_cursor_pos())
     }
 }
 
@@ -435,7 +442,7 @@ impl From<CoordFSM> for Coords {
     fn from(value: CoordFSM) -> Self {
         match value {
             CoordFSM::Abs(abs) => abs.get_coords(),
-            CoordFSM::Rel(rc) => Coords::from(rc),
+            CoordFSM::Rel(rc) => Coords::try_from(rc),
         }
     }
 }
