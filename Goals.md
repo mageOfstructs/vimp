@@ -14,3 +14,4 @@
 - [ ] macro support
 - [ ] finish goals
 - [ ] live preview
+- [ ] grid (visual aid to help figure out coords)
