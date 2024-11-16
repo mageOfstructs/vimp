@@ -1,3 +1,4 @@
+use crate::graphics::TrueSignalClone;
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
@@ -175,7 +176,7 @@ fn Reader() -> impl IntoView {
                         } else {
                             logging::log!("Updating the selected prop");
                             overlays.with(|vec| vec[i].selected.set(true));
-                            set_select_buffer.update(|buf| buf.push((i, forms()[i].clone())));
+                            set_select_buffer.update(|buf| buf.push((i, forms()[i].deep_clone())));
                             set_select_mode(SelectState::FormsSelected);
                             logging::log!("Successfully updated the selected prop(s)");
                         }
@@ -210,6 +211,19 @@ fn Reader() -> impl IntoView {
             }
             "e" if fsm().is_none() => {
                 set_select_mode(SelectState::SelectModeOn);
+                return;
+            }
+            "p" => {
+                set_select_buffer.update(|select_buffer| {
+                    while !select_buffer.is_empty() {
+                        let form = select_buffer.pop().unwrap().1;
+                        let (x, y) = get_cursor_pos();
+                        form.move_form(Coords::AbsCoord(x, y));
+                        set_forms.update(|vec| {
+                            vec.push(form);
+                        });
+                    }
+                });
                 return;
             }
             "Backspace" if !com().is_empty() => {

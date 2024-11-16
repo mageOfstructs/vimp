@@ -24,6 +24,14 @@ macro_rules! gen_form {
             $($type($type)),+
         }
 
+        impl TrueSignalClone for Form {
+            fn deep_clone(&self) -> Self {
+                match self {
+                    $(Self::$type(form) => Self::$type(form.deep_clone())),+
+                }
+            }
+        }
+
         impl GraphicsItem for Form {
             fn key(&self) -> u128 {
                 match self {
@@ -58,10 +66,14 @@ pub fn key_from_four(n1: u32, n2: u32, n3: u32, n4: u32) -> u128 {
 fn format_css<T: Display>(c: T) -> String {
     format!("{}%", c)
 }
-pub trait GraphicsItem: Clone {
+pub trait GraphicsItem: Clone + TrueSignalClone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
     fn move_form(&self, coords: Coords);
+}
+
+pub trait TrueSignalClone {
+    fn deep_clone(&self) -> Self;
 }
 
 gen_form!(Line, Rect, Text, Circle);
@@ -85,6 +97,18 @@ impl Display for Line {
             (self.x2.read_only())(),
             (self.y2.read_only())()
         )
+    }
+}
+
+impl TrueSignalClone for Line {
+    fn deep_clone(&self) -> Self {
+        Line {
+            x1: RwSignal::new((self.x1)()),
+            y1: RwSignal::new((self.y1)()),
+            x2: RwSignal::new((self.x2)()),
+            y2: RwSignal::new((self.y2)()),
+            color: RwSignal::new((self.color)()),
+        }
     }
 }
 
@@ -190,25 +214,22 @@ pub struct Rect {
     inner_color: RwSignal<String>,
 }
 
-impl Rect {
-    // pub fn new(x: u32, y: u32, x2: u32, y2: u32) -> Self {
-    //     Self {
-    //         x: RwSignal::new(x),
-    //         y: RwSignal::new(y),
-    //         width: RwSignal::new(x2 as i32 - x as i32), // if this underflows, we're cooked
-    //         height: RwSignal::new(y2 as i32 - y as i32), // if this underflows, we're cooked
-    //         rx: RwSignal::new(Default::default()),
-    //         ry: RwSignal::new(Default::default()),
-    //         border_color: RwSignal::new(Default::default()),
-    //         inner_color: RwSignal::new("red".to_string()),
-    //     }
-    // }
-    // pub fn from(tuple: (u32, u32, u32, u32)) -> Self {
-    //     logging::log!("Creating new rect with {tuple:?}");
-    //     let (x, y, x2, y2) = tuple;
-    //     Self::new(x, y, x2, y2)
-    // }
+impl TrueSignalClone for Rect {
+    fn deep_clone(&self) -> Self {
+        Rect {
+            x: RwSignal::new((self.x)()),
+            y: RwSignal::new((self.y)()),
+            width: RwSignal::new((self.width)()),
+            height: RwSignal::new((self.height)()),
+            rx: RwSignal::new((self.rx)()),
+            ry: RwSignal::new((self.ry)()),
+            border_color: RwSignal::new((self.border_color)()),
+            inner_color: RwSignal::new((self.inner_color)()),
+        }
+    }
+}
 
+impl Rect {
     fn css_coords_reactive(
         &self,
     ) -> (
@@ -287,12 +308,35 @@ impl Text {
     }
 }
 
+impl TrueSignalClone for Text {
+    fn deep_clone(&self) -> Self {
+        Text {
+            x: RwSignal::new((self.x)()),
+            y: RwSignal::new((self.y)()),
+            text: RwSignal::new((self.text)()),
+            font_size: RwSignal::new((self.font_size)()),
+            color: RwSignal::new((self.color)()),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Circle {
     radius: RwSignal<u32>,
     x: RwSignal<u32>,
     y: RwSignal<u32>,
     color: RwSignal<String>,
+}
+
+impl TrueSignalClone for Circle {
+    fn deep_clone(&self) -> Self {
+        Circle {
+            radius: RwSignal::new((self.radius)()),
+            x: RwSignal::new((self.x)()),
+            y: RwSignal::new((self.y)()),
+            color: RwSignal::new((self.color)()),
+        }
+    }
 }
 
 impl Circle {
