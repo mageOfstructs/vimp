@@ -145,7 +145,7 @@ fn Reader() -> impl IntoView {
     let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
     let (limbo, set_limbo) = create_signal(Option::<Form>::None);
-    let (select_buffer, set_select_buffer) = create_signal(Option::<Vec<Form>>::None);
+    let (select_buffer, set_select_buffer) = create_signal(Vec::<Form>::new());
     let (select_mode, set_select_mode) = create_signal(false);
     let (overlays, set_overlays) = create_signal(Vec::<SelectableOverlayData>::new());
     provide_context(overlays);
@@ -169,7 +169,7 @@ fn Reader() -> impl IntoView {
                     } else {
                         logging::log!("Updating the selected prop");
                         overlays.with(|vec| vec[i].selected.set(true));
-                        set_select_buffer.set(Some(vec![forms()[i].clone()]));
+                        set_select_buffer.update(|buf| buf.push(forms()[i].clone()));
                         logging::log!("Successfully updated the selected prop");
                     }
                 }
