@@ -12,3 +12,4 @@
 - [ ] macro support
 - [ ] finish goals
 - [x] export
+- [ ] live preview
