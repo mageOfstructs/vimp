@@ -442,7 +442,7 @@ impl From<CoordFSM> for Coords {
     fn from(value: CoordFSM) -> Self {
         match value {
             CoordFSM::Abs(abs) => abs.get_coords(),
-            CoordFSM::Rel(rc) => Coords::try_from(rc),
+            CoordFSM::Rel(rc) => Coords::from(rc),
         }
     }
 }
