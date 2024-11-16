@@ -13,3 +13,4 @@
 - [ ] finish goals
 - [x] export
 - [ ] live preview
+- [ ] grid (visual aid to help figure out coords)
