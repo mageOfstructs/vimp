@@ -1,12 +1,9 @@
 use crate::components::get_cursor_pos;
-use crate::components::SelectMode;
-use crate::components::Selectable;
 use crate::components::SelectableOverlayData;
-use leptos::use_context;
-use leptos::ReadSignal;
+use crate::parser::Coords;
 use leptos::Signal;
+use leptos::SignalSet;
 use leptos::SignalUpdate;
-use leptos::WriteSignal;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::DefaultHasher;
@@ -38,6 +35,11 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.get_overlay_dims()),+
                 }
             }
+            fn move_form(&self, coords: Coords) {
+                match self {
+                    $(Self::$type(form) => form.move_form(coords)),+
+                }
+            }
         }
 
         impl IntoView for Form {
@@ -59,6 +61,7 @@ fn format_css<T: Display>(c: T) -> String {
 pub trait GraphicsItem: Clone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
+    fn move_form(&self, coords: Coords);
 }
 
 gen_form!(Line, Rect, Text, Circle);
@@ -155,6 +158,24 @@ impl GraphicsItem for Line {
 
         SelectableOverlayData::new(y1.into(), x1.into(), width, height)
     }
+    fn move_form(&self, coords: Coords) {
+        match coords {
+            Coords::AbsCoord(x, y) => {
+                self.x1.update(|c| *c += x);
+                self.y1.update(|c| *c += y);
+                self.x2.update(|c| *c += x);
+                self.y2.update(|c| *c += y);
+            }
+            Coords::RelCoord(fcp) => {
+                let p1 = fcp.resolve_with_offset(((self.x1)(), (self.y1)()));
+                let p2 = fcp.resolve_with_offset(((self.x2)(), (self.y2)()));
+                self.x1.set(p1.0);
+                self.y1.set(p1.1);
+                self.x2.set(p2.0);
+                self.y2.set(p2.1);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -196,10 +217,10 @@ impl Rect {
         impl Fn() -> String,
         impl Fn() -> String,
     ) {
-        let mut x1: Signal<u32> = Signal::from(self.x);
-        let mut y1: Signal<u32> = self.y.into();
-        let mut width: Signal<u32> = self.width.into();
-        let mut height: Signal<u32> = self.height.into();
+        let x1: Signal<u32> = Signal::from(self.x);
+        let y1: Signal<u32> = self.y.into();
+        let width: Signal<u32> = self.width.into();
+        let height: Signal<u32> = self.height.into();
         // if width() < 0 {
         //     x1 = Signal::derive(move || (x1() as i32 + width()) as u32);
         //     width = Signal::derive(move || -width());
@@ -233,6 +254,19 @@ impl GraphicsItem for Rect {
             self.width.into(),
             self.height.into(),
         )
+    }
+    fn move_form(&self, coords: Coords) {
+        match coords {
+            Coords::AbsCoord(x, y) => {
+                self.x.update(|c| *c += x);
+                self.y.update(|c| *c += y);
+            }
+            Coords::RelCoord(fcp) => {
+                let p1 = fcp.resolve_with_offset(((self.x)(), (self.y)()));
+                self.x.set(p1.0);
+                self.y.set(p1.1);
+            }
+        }
     }
 }
 
@@ -290,6 +324,19 @@ impl GraphicsItem for Circle {
             Signal::derive(move || radius() * 2),
         )
     }
+    fn move_form(&self, coords: Coords) {
+        match coords {
+            Coords::AbsCoord(x, y) => {
+                self.x.update(|c| *c += x);
+                self.y.update(|c| *c += y);
+            }
+            Coords::RelCoord(fcp) => {
+                let p1 = fcp.resolve_with_offset(((self.x)(), (self.y)()));
+                self.x.set(p1.0);
+                self.y.set(p1.1);
+            }
+        }
+    }
 }
 
 impl GraphicsItem for Text {
@@ -308,6 +355,19 @@ impl GraphicsItem for Text {
             Signal::derive(move || font_size() * text().len() as u32),
             self.font_size.into(),
         )
+    }
+    fn move_form(&self, coords: Coords) {
+        match coords {
+            Coords::AbsCoord(x, y) => {
+                self.x.update(|c| *c += x);
+                self.y.update(|c| *c += y);
+            }
+            Coords::RelCoord(fcp) => {
+                let p1 = fcp.resolve_with_offset(((self.x)(), (self.y)()));
+                self.x.set(p1.0);
+                self.y.set(p1.1);
+            }
+        }
     }
 }
 
