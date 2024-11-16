@@ -81,7 +81,7 @@ fn parse_command(
         match com.ctype() {
             CommandType::Move => {
                 for form in buf {
-                    form.move_form(com.coords());
+                    form.1.move_form(com.coords());
                 }
             }
             _ => todo!(),
@@ -134,7 +134,7 @@ impl Fn<()> for SelectMode {
 }
 
 #[derive(Clone)]
-struct SelectBuffer(ReadSignal<Vec<Form>>);
+struct SelectBuffer(ReadSignal<Vec<(usize, Form)>>);
 
 #[derive(Clone)]
 pub enum SelectState {
@@ -149,7 +149,7 @@ fn Reader() -> impl IntoView {
     let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
     let (limbo, set_limbo) = create_signal(Option::<Form>::None);
-    let (select_buffer, set_select_buffer) = create_signal(Vec::<Form>::new());
+    let (select_buffer, set_select_buffer) = create_signal(Vec::<(usize, Form)>::new());
     let (select_mode, set_select_mode) = create_signal(SelectState::Off);
     let (overlays, set_overlays) = create_signal(Vec::<SelectableOverlayData>::new());
     provide_context(overlays);
@@ -162,9 +162,8 @@ fn Reader() -> impl IntoView {
         match select_mode() {
             SelectState::SelectModeOn => {
                 if next_char.len() == 1 {
-                    set_com.update(|com| com.push(next_char.chars().next().unwrap()));
+                    set_com.update(|com| com.push_str(&next_char));
                 } else if next_char == "Enter" {
-                    set_select_mode(SelectState::FormsSelected);
                     logging::log!("We got da '{}'", com());
                     let idxs: Vec<_> = com().split(',').map(|str| Namer::get_index(str)).collect();
                     set_com.update(|str| str.clear());
@@ -176,13 +175,33 @@ fn Reader() -> impl IntoView {
                         } else {
                             logging::log!("Updating the selected prop");
                             overlays.with(|vec| vec[i].selected.set(true));
-                            set_select_buffer.update(|buf| buf.push(forms()[i].clone()));
-                            logging::log!("Successfully updated the selected prop");
+                            set_select_buffer.update(|buf| buf.push((i, forms()[i].clone())));
+                            set_select_mode(SelectState::FormsSelected);
+                            logging::log!("Successfully updated the selected prop(s)");
                         }
                     }
                 }
                 return;
             }
+            SelectState::FormsSelected => match &*next_char {
+                "d" | "y" => {
+                    if next_char == "d" {
+                        for form in select_buffer() {
+                            set_overlays.update(|vec| {
+                                vec.remove(form.0);
+                            });
+                            set_forms.update(|vec| {
+                                vec.remove(form.0);
+                            });
+                        }
+                        set_select_buffer.update(|vec| vec.clear());
+                    }
+                    set_select_mode(SelectState::Off);
+                    set_com.update(|str| str.clear());
+                    return;
+                }
+                _ => {}
+            },
             _ => {}
         }
         match &*next_char {
