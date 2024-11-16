@@ -159,22 +159,27 @@ fn Reader() -> impl IntoView {
                 set_com.update(|com| com.push(next_char.chars().next().unwrap()));
             } else if next_char == "Enter" {
                 logging::log!("We got da '{}'", com());
-                let i = Namer::get_index(com());
+                let idxs: Vec<_> = com().split(',').map(|str| Namer::get_index(str)).collect();
                 set_com.update(|str| str.clear());
 
-                logging::log!("This should be index '{}'", i);
-                if i >= forms().len() || i >= overlays().len() {
-                    logging::warn!("But this index is out of bounce!");
-                } else {
-                    logging::log!("Updating the selected prop");
-                    overlays.with(|vec| vec[i].selected.set(true));
-                    set_select_buffer.set(Some(vec![forms()[i].clone()]));
-                    logging::log!("Successfully updated the selected prop");
+                for i in idxs {
+                    logging::log!("This should be index '{}'", i);
+                    if i >= forms().len() || i >= overlays().len() {
+                        logging::log!("But this index is out of bounce!");
+                    } else {
+                        logging::log!("Updating the selected prop");
+                        overlays.with(|vec| vec[i].selected.set(true));
+                        set_select_buffer.set(Some(vec![forms()[i].clone()]));
+                        logging::log!("Successfully updated the selected prop");
+                    }
                 }
             }
             return;
         }
         match &*next_char {
+            "Escape" => {
+                set_com.update(|str| str.clear());
+            }
             "e" if fsm().is_none() => {
                 set_select_mode.update(|val| {
                     *val = !*val;
@@ -404,7 +409,7 @@ pub struct Namer {
     cur_name: Vec<char>,
 }
 impl Namer {
-    pub fn get_index(name: String) -> usize {
+    pub fn get_index(name: &str) -> usize {
         name.chars()
             .enumerate()
             .map(|(i, c)| (c as usize - 'a' as usize) * 26_usize.pow(i as u32))
