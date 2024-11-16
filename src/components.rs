@@ -79,29 +79,36 @@ fn parse_command(
     set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
 ) {
     let cs = use_context::<CursorSetter>().unwrap();
-    let com = com.clone();
-    let form = match com.ctype() {
-        CommandType::Line => {
-            logging::log!("Creating a line...");
-            Some(Form::Line(Line::try_from(com).unwrap()))
+    let select_mode = use_context::<SelectMode>().unwrap();
+    if select_mode() {
+        match com.ctype() {
+            CommandType::Move => {}
+            _ => todo!(),
         }
-        CommandType::Rectangle => Some(Form::Rect(Rect::try_from(com).unwrap())),
-        CommandType::Move => {
-            let (x, y) = match com.coords() {
-                Coords::AbsCoord(x, y) => (x, y),
-                Coords::RelCoord(rc) => rc.resolve_fcp(),
-            };
-            (cs.setx)(x);
-            (cs.sety)(y);
-            logging::log!("New cursor pos: {}, {}", x, y);
-            None
+    } else {
+        let form = match com.ctype() {
+            CommandType::Line => {
+                logging::log!("Creating a line...");
+                Some(Form::Line(Line::try_from(com).unwrap()))
+            }
+            CommandType::Rectangle => Some(Form::Rect(Rect::try_from(com).unwrap())),
+            CommandType::Move => {
+                let (x, y) = match com.coords() {
+                    Coords::AbsCoord(x, y) => (x, y),
+                    Coords::RelCoord(rc) => rc.resolve_fcp(),
+                };
+                (cs.setx)(x);
+                (cs.sety)(y);
+                logging::log!("New cursor pos: {}, {}", x, y);
+                None
+            }
+            CommandType::Text => Some(Form::Text(Text::try_from(com).unwrap())),
+            CommandType::Circle(_) => Some(Form::Circle(Circle::try_from(com).unwrap())),
+        };
+        if let Some(form) = form {
+            set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
+            set_forms.update(|vec| vec.push(form));
         }
-        CommandType::Text => Some(Form::Text(Text::try_from(com).unwrap())),
-        CommandType::Circle(_) => Some(Form::Circle(Circle::try_from(com).unwrap())),
-    };
-    if let Some(form) = form {
-        set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
-        set_forms.update(|vec| vec.push(form));
     }
 }
 
@@ -153,14 +160,11 @@ fn Reader() -> impl IntoView {
             } else if next_char == "Enter" {
                 logging::log!("We got da '{}'", com());
                 let i = Namer::get_index(com());
-                // set_select_mode.update(|val| {
-                //     *val = !*val;
-                // });
                 set_com.update(|str| str.clear());
 
                 logging::log!("This should be index '{}'", i);
                 if i >= forms().len() || i >= overlays().len() {
-                    logging::log!("But this index is out of bounce!");
+                    logging::warn!("But this index is out of bounce!");
                 } else {
                     logging::log!("Updating the selected prop");
                     overlays.with(|vec| vec[i].selected.set(true));
@@ -183,6 +187,7 @@ fn Reader() -> impl IntoView {
                 });
                 set_fsm(match CommandFSM::from(com()) {
                     FSMResult::OkCommand(com) => {
+                        // this is technically unreachable
                         parse_command(com, set_forms, set_overlays);
                         return;
                     }
