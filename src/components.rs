@@ -82,7 +82,7 @@ fn parse_command(
         match com.ctype() {
             CommandType::Move => {
                 for form in buf {
-                    form.1.move_form(com.coords());
+                    form.1.move_form(&com.coords());
                 }
             }
             _ => todo!(),
@@ -176,7 +176,7 @@ fn Reader() -> impl IntoView {
                         } else {
                             logging::log!("Updating the selected prop");
                             overlays.with(|vec| vec[i].selected.set(true));
-                            set_select_buffer.update(|buf| buf.push((i, forms()[i].deep_clone())));
+                            set_select_buffer.update(|buf| buf.push((i, forms()[i].clone())));
                             set_select_mode(SelectState::FormsSelected);
                             logging::log!("Successfully updated the selected prop(s)");
                         }
@@ -215,10 +215,10 @@ fn Reader() -> impl IntoView {
             }
             "p" => {
                 set_select_buffer.update(|select_buffer| {
-                    while !select_buffer.is_empty() {
-                        let form = select_buffer.pop().unwrap().1;
+                    for form in select_buffer.iter().map(|(_, form)| form) {
+                        let form = form.deep_clone();
                         let (x, y) = get_cursor_pos();
-                        form.move_form(Coords::AbsCoord(x, y));
+                        form.move_form(&Coords::AbsCoord(x, y));
                         set_forms.update(|vec| {
                             vec.push(form);
                         });
@@ -418,6 +418,13 @@ impl SelectableOverlayData {
         hasher.write_u32((self.height)());
         // hasher.write_u8((self.selected)() as u8);
         hasher.finish()
+    }
+
+    pub fn top(&self) -> u32 {
+        (self.top)()
+    }
+    pub fn left(&self) -> u32 {
+        (self.left)()
     }
 }
 

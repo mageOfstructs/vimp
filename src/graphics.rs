@@ -43,7 +43,7 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.get_overlay_dims()),+
                 }
             }
-            fn move_form(&self, coords: Coords) {
+            fn move_form(&self, coords: &Coords) {
                 match self {
                     $(Self::$type(form) => form.move_form(coords)),+
                 }
@@ -69,7 +69,7 @@ fn format_css<T: Display>(c: T) -> String {
 pub trait GraphicsItem: Clone + TrueSignalClone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
-    fn move_form(&self, coords: Coords);
+    fn move_form(&self, coords: &Coords);
 }
 
 pub trait TrueSignalClone {
@@ -182,7 +182,7 @@ impl GraphicsItem for Line {
 
         SelectableOverlayData::new(y1.into(), x1.into(), width, height)
     }
-    fn move_form(&self, coords: Coords) {
+    fn move_form(&self, coords: &Coords) {
         match coords {
             Coords::AbsCoord(x, y) => {
                 self.x1.update(|c| *c += x);
@@ -276,7 +276,7 @@ impl GraphicsItem for Rect {
             self.height.into(),
         )
     }
-    fn move_form(&self, coords: Coords) {
+    fn move_form(&self, coords: &Coords) {
         match coords {
             Coords::AbsCoord(x, y) => {
                 self.x.update(|c| *c += x);
@@ -368,7 +368,7 @@ impl GraphicsItem for Circle {
             Signal::derive(move || radius() * 2),
         )
     }
-    fn move_form(&self, coords: Coords) {
+    fn move_form(&self, coords: &Coords) {
         match coords {
             Coords::AbsCoord(x, y) => {
                 self.x.update(|c| *c += x);
@@ -400,7 +400,7 @@ impl GraphicsItem for Text {
             self.font_size.into(),
         )
     }
-    fn move_form(&self, coords: Coords) {
+    fn move_form(&self, coords: &Coords) {
         match coords {
             Coords::AbsCoord(x, y) => {
                 self.x.update(|c| *c += x);
@@ -567,5 +567,70 @@ impl TryFrom<Command> for Circle {
             }
             other => Err(other),
         }
+    }
+}
+
+// let's see how long we can hold this non-reactive
+#[derive(Clone)]
+struct Group {
+    forms: Vec<Form>,
+}
+
+impl FromIterator<Form> for Group {
+    fn from_iter<T: IntoIterator<Item = Form>>(iter: T) -> Self {
+        let mut ret = Group {
+            forms: Vec::with_capacity(3),
+        };
+        for form in iter {
+            ret.forms.push(form);
+        }
+        ret
+    }
+}
+
+impl GraphicsItem for Group {
+    fn key(&self) -> u128 {
+        let mut hasher = DefaultHasher::new();
+        for form in &self.forms {
+            hasher.write_u128(form.key());
+        }
+        hasher.finish() as u128
+    }
+    fn move_form(&self, coords: &Coords) {
+        for form in &self.forms {
+            form.move_form(coords);
+        }
+    }
+    fn get_overlay_dims(&self) -> SelectableOverlayData {
+        let copy = self.clone(); // TODO: let's see if we can get this to not need two copies
+        let copy2 = self.clone();
+        SelectableOverlayData::new(
+            Signal::derive(move || {
+                copy.forms
+                    .iter()
+                    .map(|f| f.get_overlay_dims())
+                    .clone()
+                    .map(|sod| sod.top())
+                    .min()
+                    .unwrap_or(0)
+            }),
+            Signal::derive(move || {
+                copy2
+                    .forms
+                    .iter()
+                    .map(|f| f.get_overlay_dims())
+                    .map(|sod| sod.left())
+                    .min()
+                    .unwrap_or(0)
+            }),
+            RwSignal::new(0).into(),
+            RwSignal::new(0).into(),
+        )
+    }
+}
+
+impl TrueSignalClone for Group {
+    fn deep_clone(&self) -> Self {
+        self.clone()
     }
 }
