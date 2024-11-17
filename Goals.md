@@ -1,9 +1,9 @@
 # Goals
 
 - [ ] select mode
-  - [ ] copy
-  - [ ] move
-  - [ ] delete
+  - [x] copy
+  - [x] move
+  - [x] delete
   - [ ] macro integration (when it's done)
 - [ ] group support
 - [ ] optionally enter starting point for form in command
