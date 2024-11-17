@@ -335,7 +335,9 @@ fn ExportBtn() -> impl IntoView {
 }
 
 fn mouseclick(evt: MouseEvent) {
-    logging::log!("Mouse click: {evt:?}");
+    if evt.button() == 0 {
+        logging::log!("Mouse click: {evt:?}");
+    }
 }
 
 #[derive(Clone, Debug)]
