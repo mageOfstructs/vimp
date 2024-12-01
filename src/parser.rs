@@ -186,6 +186,12 @@ impl CommandFSM {
                         coords: Some(Err(CoordFSM::Abs(AbsCoord::EnteringFirstNum(0)))),
                         ..self
                     }),
+                    _ if FastDirection::try_from(next_char).is_ok() => Err(Self {
+                        coords: Some(Err(CoordFSM::Rel(RelCoord::Direction(
+                            FastDirection::try_from(next_char).unwrap(),
+                        )))),
+                        ..self
+                    }),
                     _ => {
                         logging::error!("Not valid coord begin: {next_char}");
                         Err(self)
@@ -297,6 +303,9 @@ enum RelCoord {
     FirstNumAndDirection(RelCoordPair),
     EnteringSecondNum(RelCoordPair, u32),
     BothNums(RelCoordPair, RelCoordPair),
+    // second route
+    Direction(FastDirection),
+    EnteringDistance(FastDirection, u32),
 }
 
 impl From<RelCoord> for Coords {
@@ -308,9 +317,99 @@ impl From<RelCoord> for Coords {
             }
             RelCoord::EnteringSecondNum(rcp, _) => FinishedRelCoord::OneCoord(rcp),
             RelCoord::BothNums(rcp1, rcp2) => FinishedRelCoord::TwoCoords(rcp1, rcp2),
+            RelCoord::EnteringDistance(dir, dist) => {
+                logging::log!("{dir:?}: {dist}");
+                let (x, y) = get_cursor_pos();
+                return Coords::AbsCoord(
+                    (x as i32 + dir.horiz.resolve(dist)) as u32,
+                    (y as i32 + dir.vert.resolve(dist)) as u32, // this is horrible
+                );
+            }
+            RelCoord::Direction(dir) => {
+                let (x, y) = get_cursor_pos();
+                return Coords::AbsCoord(
+                    (x as i32 + dir.horiz.resolve(5)) as u32,
+                    (y as i32 + dir.vert.resolve(5)) as u32, // this is horrible
+                );
+            }
         };
 
         Coords::RelCoord(ret)
+    }
+}
+
+#[derive(Clone, Debug)]
+enum FastDirectionType {
+    Pos,
+    Neg,
+    None,
+}
+
+impl FastDirectionType {
+    fn resolve(&self, dist: u32) -> i32 {
+        match self {
+            Self::Pos => dist as i32,
+            Self::Neg => -(dist as i32),
+            Self::None => 0,
+        }
+    }
+}
+#[derive(Clone, Debug)]
+struct FastDirection {
+    horiz: FastDirectionType, // Pos = Left, Neg = Right
+    vert: FastDirectionType,  // Pos = Down, Neg = Up
+}
+impl TryFrom<char> for FastDirection {
+    type Error = String;
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        let mut horiz = FastDirectionType::None;
+        let mut vert = FastDirectionType::None;
+        match value {
+            'q' => {
+                horiz = FastDirectionType::Neg;
+                vert = FastDirectionType::Neg;
+            }
+            'w' => vert = FastDirectionType::Neg,
+            'e' => {
+                horiz = FastDirectionType::Pos;
+                vert = FastDirectionType::Neg;
+            }
+            'd' => horiz = FastDirectionType::Pos,
+            'c' => {
+                horiz = FastDirectionType::Pos;
+                vert = FastDirectionType::Pos;
+            }
+            'x' => vert = FastDirectionType::Pos,
+            'y' => {
+                vert = FastDirectionType::Pos;
+                horiz = FastDirectionType::Neg;
+            }
+            'a' => horiz = FastDirectionType::Neg,
+            other => return Err(format!("Failed converting to FastDirection: {other}")),
+        };
+        Ok(Self { horiz, vert })
+    }
+}
+
+impl Into<char> for FastDirection {
+    fn into(self) -> char {
+        match self.horiz {
+            FastDirectionType::Pos => match self.vert {
+                FastDirectionType::Pos => 'c',
+                FastDirectionType::Neg => 'e',
+                FastDirectionType::None => 'd',
+            },
+            FastDirectionType::Neg => match self.vert {
+                FastDirectionType::Pos => 'y',
+                FastDirectionType::Neg => 'q',
+                FastDirectionType::None => 'a',
+            },
+            FastDirectionType::None => match self.vert {
+                FastDirectionType::Pos => 'x',
+                FastDirectionType::Neg => 'w',
+                FastDirectionType::None => panic!("FastDirection goes nowhere!"),
+            },
+        }
     }
 }
 
@@ -345,6 +444,15 @@ impl Display for RelCoord {
                     ret.push(';');
                     ret.push_str(&rcp2.to_string());
                     ret
+                }
+                Self::Direction(dir) =>
+                    <FastDirection as Into<char>>::into(dir.clone()).to_string(),
+                Self::EnteringDistance(dir, dist) => {
+                    format!(
+                        "{}{}",
+                        <FastDirection as Into<char>>::into(dir.clone()),
+                        dist
+                    )
                 }
             }
         )
@@ -428,8 +536,39 @@ impl RelCoord {
                     Err(self)
                 }
             },
+            Self::Direction(ref dir) => match short_distance(next_char) {
+                Ok(dist) => Err(Self::EnteringDistance(dir.clone(), dist)),
+                Err(_) => {
+                    logging::error!("Not part of short distance syntax: {next_char}");
+                    Err(self)
+                }
+            },
+            Self::EnteringDistance(ref dir, cur_dist) => match short_distance(next_char) {
+                Ok(dist) => Err(Self::EnteringDistance(dir.clone(), cur_dist + dist)),
+                Err(_) => {
+                    logging::error!("Not part of short distance syntax: {next_char}");
+                    Err(self)
+                }
+            },
         }
     }
+}
+
+const SHORT_5: char = 'q';
+const SHORT_15: char = 'e';
+const SHORT_25: char = 'r';
+const SHORT_50: char = 't';
+const SHORT_75: char = 'z';
+
+fn short_distance(value: char) -> Result<u32, ()> {
+    Ok(match value {
+        SHORT_5 => 5,
+        SHORT_15 => 15,
+        SHORT_25 => 25,
+        SHORT_50 => 50,
+        SHORT_75 => 75,
+        _ => return Err(()),
+    })
 }
 
 #[derive(Debug, Clone)]
