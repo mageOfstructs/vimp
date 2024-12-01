@@ -1,3 +1,4 @@
+use crate::graphics::TrueSignalClone;
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
@@ -11,17 +12,13 @@ use leptos::{
 };
 use leptos::{window_event_listener, SignalSet};
 use regex::Regex;
-use std::env::Args;
 use std::hash::{DefaultHasher, Hasher};
 use wasm_bindgen::JsValue;
 
-use crate::graphics::{key_from_four, Circle};
+use crate::graphics::Circle;
 use crate::{
     graphics::{Form, GraphicsItem, Line, Rect, Text},
-    parser::{
-        Command, CommandFSM, CommandType, Coords, Direction, FSMResult, FinishedRelCoord,
-        RelCoordPair,
-    },
+    parser::{Command, CommandFSM, CommandType, Coords, Direction, FSMResult, RelCoordPair},
 };
 
 // TOOD: refactor into separate files
@@ -80,9 +77,14 @@ fn parse_command(
 ) {
     let cs = use_context::<CursorSetter>().unwrap();
     let select_mode = use_context::<SelectMode>().unwrap();
-    if select_mode() {
+    if let SelectState::FormsSelected = select_mode() {
+        let buf = use_context::<SelectBuffer>().unwrap().0();
         match com.ctype() {
-            CommandType::Move => {}
+            CommandType::Move => {
+                for form in buf {
+                    form.1.move_form(&com.coords());
+                }
+            }
             _ => todo!(),
         }
     } else {
@@ -113,10 +115,10 @@ fn parse_command(
 }
 
 #[derive(Clone)]
-pub struct SelectMode(ReadSignal<bool>);
+pub struct SelectMode(ReadSignal<SelectState>);
 
 impl FnOnce<()> for SelectMode {
-    type Output = bool;
+    type Output = SelectState;
     extern "rust-call" fn call_once(self, _args: ()) -> Self::Output {
         (self.0)()
     }
@@ -132,12 +134,15 @@ impl Fn<()> for SelectMode {
     }
 }
 
-// impl Fn for SelectMode<> {
-//     type Output = bool;
-//     extern "rust-call" fn call(&self, args: Args) -> Self::Output {
-//         (self.0)()
-//     }
-// }
+#[derive(Clone)]
+struct SelectBuffer(ReadSignal<Vec<(usize, Form)>>);
+
+#[derive(Clone)]
+pub enum SelectState {
+    Off,
+    SelectModeOn,
+    FormsSelected,
+}
 
 #[component]
 fn Reader() -> impl IntoView {
@@ -145,44 +150,88 @@ fn Reader() -> impl IntoView {
     let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
     let (limbo, set_limbo) = create_signal(Option::<Form>::None);
-    let (select_buffer, set_select_buffer) = create_signal(Vec::<Form>::new());
-    let (select_mode, set_select_mode) = create_signal(false);
+    let (select_buffer, set_select_buffer) = create_signal(Vec::<(usize, Form)>::new());
+    let (select_mode, set_select_mode) = create_signal(SelectState::Off);
     let (overlays, set_overlays) = create_signal(Vec::<SelectableOverlayData>::new());
     provide_context(overlays);
     provide_context(SelectMode(select_mode));
+    provide_context(SelectBuffer(select_buffer));
 
     let on_keypress = move |evt: KeyboardEvent| {
         let mut next_char = evt.key();
         logging::log!("We got {next_char}!");
-        if select_mode() {
-            if next_char.len() == 1 {
-                set_com.update(|com| com.push(next_char.chars().next().unwrap()));
-            } else if next_char == "Enter" {
-                logging::log!("We got da '{}'", com());
-                let idxs: Vec<_> = com().split(',').map(|str| Namer::get_index(str)).collect();
-                set_com.update(|str| str.clear());
+        match select_mode() {
+            SelectState::SelectModeOn => {
+                if next_char.len() == 1 {
+                    set_com.update(|com| com.push_str(&next_char));
+                } else if next_char == "Enter" {
+                    logging::log!("We got da '{}'", com());
+                    let idxs: Vec<_> = com().split(',').map(|str| Namer::get_index(str)).collect();
+                    set_com.update(|str| str.clear());
 
-                for i in idxs {
-                    logging::log!("This should be index '{}'", i);
-                    if i >= forms().len() || i >= overlays().len() {
-                        logging::log!("But this index is out of bounce!");
-                    } else {
-                        logging::log!("Updating the selected prop");
-                        overlays.with(|vec| vec[i].selected.set(true));
-                        set_select_buffer.update(|buf| buf.push(forms()[i].clone()));
-                        logging::log!("Successfully updated the selected prop");
+                    for i in idxs {
+                        logging::log!("This should be index '{}'", i);
+                        if i >= forms().len() || i >= overlays().len() {
+                            logging::error!("But this index is out of bounce!");
+                        } else {
+                            logging::log!("Updating the selected prop");
+                            overlays.with(|vec| vec[i].selected.set(true));
+                            set_select_buffer.update(|buf| buf.push((i, forms()[i].clone())));
+                            set_select_mode(SelectState::FormsSelected);
+                            logging::log!("Successfully updated the selected prop(s)");
+                        }
                     }
                 }
+                return;
             }
-            return;
+            SelectState::FormsSelected => match &*next_char {
+                "d" | "y" => {
+                    if next_char == "d" {
+                        for form in select_buffer() {
+                            set_overlays.update(|vec| {
+                                vec.remove(form.0);
+                            });
+                            set_forms.update(|vec| {
+                                vec.remove(form.0);
+                            });
+                        }
+                        set_select_buffer.update(|vec| vec.clear());
+                    }
+                    set_select_mode(SelectState::Off);
+                    set_com.update(|str| str.clear());
+                    return;
+                }
+                _ => {}
+            },
+            _ => {}
         }
         match &*next_char {
             "Escape" => {
                 set_com.update(|str| str.clear());
+                set_fsm(None);
+                set_select_mode(SelectState::Off);
+                set_overlays.update(|vec| {
+                    select_buffer()
+                        .iter()
+                        .map(|el| el.0)
+                        .for_each(|i| vec[i].selected.set(false));
+                });
+                set_select_buffer.update(|vec| vec.clear());
             }
             "e" if fsm().is_none() => {
-                set_select_mode.update(|val| {
-                    *val = !*val;
+                set_select_mode(SelectState::SelectModeOn);
+                return;
+            }
+            "p" => {
+                set_select_buffer.update(|select_buffer| {
+                    for form in select_buffer.iter().map(|(_, form)| form) {
+                        let form = form.deep_clone();
+                        let (x, y) = get_cursor_pos();
+                        form.move_form(&Coords::AbsCoord(x, y));
+                        set_forms.update(|vec| {
+                            vec.push(form);
+                        });
+                    }
                 });
                 return;
             }
@@ -374,12 +423,18 @@ impl SelectableOverlayData {
     }
     fn key(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
-        hasher.write_u32((self.top)());
-        hasher.write_u32((self.left)());
-        hasher.write_u32((self.width)());
-        hasher.write_u32((self.height)());
-        // hasher.write_u8((self.selected)() as u8);
+        hasher.write_u8((self.selected)() as u8);
         hasher.finish()
+    }
+
+    pub fn top(&self) -> u32 {
+        (self.top)()
+    }
+    pub fn left(&self) -> u32 {
+        (self.left)()
+    }
+    pub fn set_selected(&mut self, selected: bool) {
+        self.selected.set(selected);
     }
 }
 
@@ -461,7 +516,9 @@ fn Cursor() -> impl IntoView {
     view! {
         <div id="overlay" on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
     {move || {
-                if select_mode() {
+                match select_mode() {
+                    SelectState::Off => {view! {}.into_view()},
+                    _ => {
                     let (namer, set_namer) = create_signal(Namer::new());
                     view! {
                         <For
@@ -475,7 +532,8 @@ fn Cursor() -> impl IntoView {
                         />
 
                     }
-                } else {view! {}.into_view()}
+                }
+                }
             }}
             <div style={style}>
                 UwU
