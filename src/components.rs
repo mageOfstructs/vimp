@@ -172,7 +172,7 @@ fn Reader() -> impl IntoView {
                     for i in idxs {
                         logging::log!("This should be index '{}'", i);
                         if i >= forms().len() || i >= overlays().len() {
-                            logging::log!("But this index is out of bounce!");
+                            logging::error!("But this index is out of bounce!");
                         } else {
                             logging::log!("Updating the selected prop");
                             overlays.with(|vec| vec[i].selected.set(true));
