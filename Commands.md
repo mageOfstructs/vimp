@@ -39,3 +39,23 @@
 - Suffix command with ``@<color>`` to override default
 - all ways of specifying colors in html are allowed
   - Note: Yes, this is a potential security risk
+
+## Fast Coord System
+
+- This is probably the first unique feature of vimp
+- Syntax: ``<direction><distance>``
+- The coords get calculated by moving ``distance`` units (percentage of canvas ofc)
+  in ``direction`` with the cursor as starting point.
+- ``direction`` can be one of 8 in a "star" system
+
+```text
+q w e
+a ✴ d
+y x c
+```
+
+- the ``distance`` system is inspired by roman numerals
+  - q is 5 units, e is 15, r is 25, t is 50 and z is 75
+  - multiple letters will be summed (no weird subtraction rules here)
+
+- TODO: rewrite docs for fcs (will never get done)
