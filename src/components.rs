@@ -211,9 +211,10 @@ fn Reader() -> impl IntoView {
                 set_fsm(None);
                 set_select_mode(SelectState::Off);
                 set_overlays.update(|vec| {
-                    vec.into_iter().for_each(|selectable_overlay_data| {
-                        selectable_overlay_data.set_selected(false)
-                    });
+                    select_buffer()
+                        .iter()
+                        .map(|el| el.0)
+                        .for_each(|i| vec[i].selected.set(false));
                 });
                 set_select_buffer.update(|vec| vec.clear());
             }
