@@ -208,6 +208,14 @@ fn Reader() -> impl IntoView {
         match &*next_char {
             "Escape" => {
                 set_com.update(|str| str.clear());
+                set_fsm(None);
+                set_select_mode(SelectState::Off);
+                set_overlays.update(|vec| {
+                    vec.into_iter().for_each(|selectable_overlay_data| {
+                        selectable_overlay_data.set_selected(false)
+                    });
+                });
+                set_select_buffer.update(|vec| vec.clear());
             }
             "e" if fsm().is_none() => {
                 set_select_mode(SelectState::SelectModeOn);
@@ -412,11 +420,7 @@ impl SelectableOverlayData {
     }
     fn key(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
-        hasher.write_u32((self.top)());
-        hasher.write_u32((self.left)());
-        hasher.write_u32((self.width)());
-        hasher.write_u32((self.height)());
-        // hasher.write_u8((self.selected)() as u8);
+        hasher.write_u8((self.selected)() as u8);
         hasher.finish()
     }
 
@@ -425,6 +429,9 @@ impl SelectableOverlayData {
     }
     pub fn left(&self) -> u32 {
         (self.left)()
+    }
+    pub fn set_selected(&mut self, selected: bool) {
+        self.selected.set(selected);
     }
 }
 
