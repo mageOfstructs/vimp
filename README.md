@@ -10,12 +10,13 @@
 
 - Don't you hate using *traditional* (that means old and broken) image editors,
     like MS Paint?!
+  - GIMP's fine though (3.0 is finally out*)
 - ***VIMP*** is the solution to all your quick image editing needs
 
 ## Really?
 
 - Written in Rust/Leptos <=> BLAZINGALY FAST!!
-- Easy Command Syntax (to those already familiar with Vim)
+- "Easy" Command Syntax (to those already familiar with Vim)
 - Renders images using SVG (which is cool afaik)
 
 ## ![Commands](./Commands.md)
