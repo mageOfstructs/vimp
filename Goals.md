@@ -17,4 +17,8 @@
 - [ ] finish goals
 - [ ] live preview
 - [ ] grid (visual aid to help figure out coords)
-- [ ] remapable keybinds
+- [ ] options
+  - [ ] remapable keybinds
+- [ ] modifiers
+  - [ ] move cursor to other point after figure creation
+  - [ ] "move until collide" second point is where it collides with another figure
