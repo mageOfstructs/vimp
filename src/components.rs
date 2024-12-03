@@ -1,4 +1,4 @@
-use crate::graphics::TrueSignalClone;
+use crate::graphics::{Group, TrueSignalClone};
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
@@ -201,22 +201,37 @@ fn Reader() -> impl IntoView {
                     set_com.update(|str| str.clear());
                     return;
                 }
+                "g" => {
+                    set_forms.update(|vec| {
+                        let group =
+                            Group::from_iter(select_buffer().iter().map(|tuple| tuple.1.clone()));
+                        set_overlays.update(|vec| vec.push(group.get_overlay_dims()));
+                        vec.push(Form::Group(group));
+                    });
+                    clear_select(
+                        set_com,
+                        set_fsm,
+                        set_select_mode,
+                        set_overlays,
+                        select_buffer,
+                        set_select_buffer,
+                    );
+                    return;
+                }
                 _ => {}
             },
             _ => {}
         }
         match &*next_char {
             "Escape" => {
-                set_com.update(|str| str.clear());
-                set_fsm(None);
-                set_select_mode(SelectState::Off);
-                set_overlays.update(|vec| {
-                    select_buffer()
-                        .iter()
-                        .map(|el| el.0)
-                        .for_each(|i| vec[i].selected.set(false));
-                });
-                set_select_buffer.update(|vec| vec.clear());
+                clear_select(
+                    set_com,
+                    set_fsm,
+                    set_select_mode,
+                    set_overlays,
+                    select_buffer,
+                    set_select_buffer,
+                );
             }
             "e" if fsm().is_none() => {
                 set_select_mode(SelectState::SelectModeOn);
@@ -393,8 +408,8 @@ fn mouseclick(evt: MouseEvent) {
 pub struct SelectableOverlayData {
     top: Signal<u32>,
     left: Signal<u32>,
-    width: Signal<u32>,
-    height: Signal<u32>,
+    end_x: Signal<u32>,
+    end_y: Signal<u32>,
     selected: RwSignal<bool>,
 }
 
@@ -410,14 +425,14 @@ impl SelectableOverlayData {
     pub fn new(
         top: Signal<u32>,
         left: Signal<u32>,
-        width: Signal<u32>,
-        height: Signal<u32>,
+        end_x: Signal<u32>,
+        end_y: Signal<u32>,
     ) -> Self {
         Self {
             top,
             left,
-            width,
-            height,
+            end_x,
+            end_y,
             selected: RwSignal::new(false),
         }
     }
@@ -433,6 +448,12 @@ impl SelectableOverlayData {
     pub fn left(&self) -> u32 {
         (self.left)()
     }
+    pub fn end_x(&self) -> u32 {
+        (self.end_x)()
+    }
+    pub fn end_y(&self) -> u32 {
+        (self.end_y)()
+    }
     pub fn set_selected(&mut self, selected: bool) {
         self.selected.set(selected);
     }
@@ -442,6 +463,8 @@ impl SelectableOverlayData {
 fn SelectableOverlay(
     top: Signal<u32>,
     left: Signal<u32>,
+    end_x: Signal<u32>,
+    end_y: Signal<u32>,
     selected: ReadSignal<bool>,
     namer: ReadSignal<Namer>,
     set_namer: WriteSignal<Namer>,
@@ -449,8 +472,8 @@ fn SelectableOverlay(
     let style = move || {
         format!(
             "position: absolute; top: {}%; left: {}%; width: 5%; height: 5%; border: 2px inset; border-radius: 10px",
-            top(),
-            left(),
+            top() + ((end_y() as i32 - top() as i32)/2) as u32,
+            left() + ((end_x() as i32 - left() as i32)/2) as u32,
         )
     };
     let class = move || format!("selectable {}", if selected() { "selected" } else { "" });
@@ -527,7 +550,7 @@ fn Cursor() -> impl IntoView {
                             children=move |el| {
                                 logging::log!("auf bessere Zeiten warten");
                             view! {
-                                <SelectableOverlay top={el.top} left={el.left} selected={el.selected.read_only()} namer={namer} set_namer={set_namer}/>
+                                <SelectableOverlay top={el.top} left={el.left} end_x={el.end_x} end_y={el.end_y} selected={el.selected.read_only()} namer={namer} set_namer={set_namer}/>
                             }}
                         />
 
@@ -549,4 +572,24 @@ pub fn Selectable(edit: ReadSignal<bool>, children: Children) -> impl IntoView {
             {children()}
         </div>
     }
+}
+
+fn clear_select(
+    set_com: WriteSignal<String>,
+    set_fsm: WriteSignal<Option<CommandFSM>>,
+    set_select_mode: WriteSignal<SelectState>,
+    set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
+    select_buffer: ReadSignal<Vec<(usize, Form)>>,
+    set_select_buffer: WriteSignal<Vec<(usize, Form)>>,
+) {
+    set_com.update(|str| str.clear());
+    set_fsm(None);
+    set_select_mode(SelectState::Off);
+    set_overlays.update(|vec| {
+        select_buffer()
+            .iter()
+            .map(|el| el.0)
+            .for_each(|i| vec[i].selected.set(false));
+    });
+    set_select_buffer.update(|vec| vec.clear());
 }
