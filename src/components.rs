@@ -137,12 +137,18 @@ impl Fn<()> for SelectMode {
 #[derive(Clone)]
 struct SelectBuffer(ReadSignal<Vec<(usize, Form)>>);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum SelectState {
     Off,
     SelectModeOn,
     FormsSelected,
 }
+
+#[derive(Clone)]
+pub struct FormsWS(pub WriteSignal<Vec<Form>>);
+
+#[derive(Clone)]
+pub struct OverlaysWS(pub WriteSignal<Vec<SelectableOverlayData>>);
 
 #[component]
 fn Reader() -> impl IntoView {
@@ -157,13 +163,18 @@ fn Reader() -> impl IntoView {
     provide_context(SelectMode(select_mode));
     provide_context(SelectBuffer(select_buffer));
 
+    // FIXME: in urgent need of a refactor
+    // TODO: in urgent need of a refactor
+    // BUG: in urgent need of a refactor
     let on_keypress = move |evt: KeyboardEvent| {
         let mut next_char = evt.key();
         logging::log!("We got {next_char}!");
+        logging::log!("Select mode: {:?}", select_mode());
         match select_mode() {
             SelectState::SelectModeOn => {
                 if next_char.len() == 1 {
                     set_com.update(|com| com.push_str(&next_char));
+                    return;
                 } else if next_char == "Enter" {
                     logging::log!("We got da '{}'", com());
                     let idxs: Vec<_> = com().split(',').map(|str| Namer::get_index(str)).collect();
@@ -181,8 +192,8 @@ fn Reader() -> impl IntoView {
                             logging::log!("Successfully updated the selected prop(s)");
                         }
                     }
+                    return;
                 }
-                return;
             }
             SelectState::FormsSelected => match &*next_char {
                 "d" | "y" => {
@@ -197,7 +208,14 @@ fn Reader() -> impl IntoView {
                         }
                         set_select_buffer.update(|vec| vec.clear());
                     }
+                    logging::log!("made it here");
                     set_select_mode(SelectState::Off);
+                    set_overlays.update(|vec| {
+                        select_buffer()
+                            .iter()
+                            .map(|el| el.0)
+                            .for_each(|i| vec[i].selected.set(false));
+                    });
                     set_com.update(|str| str.clear());
                     return;
                 }
@@ -240,14 +258,27 @@ fn Reader() -> impl IntoView {
             "p" => {
                 set_select_buffer.update(|select_buffer| {
                     for form in select_buffer.iter().map(|(_, form)| form) {
+                        if let Form::Group(_) = form {
+                            provide_context(FormsWS(set_forms));
+                            provide_context(OverlaysWS(set_overlays));
+                        }
                         let form = form.deep_clone();
                         let (x, y) = get_cursor_pos();
                         form.move_form(&Coords::AbsCoord(x, y));
+                        set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
                         set_forms.update(|vec| {
                             vec.push(form);
                         });
                     }
                 });
+                clear_select(
+                    set_com,
+                    set_fsm,
+                    set_select_mode,
+                    set_overlays,
+                    select_buffer,
+                    set_select_buffer,
+                );
                 return;
             }
             "Backspace" if !com().is_empty() => {
@@ -269,12 +300,18 @@ fn Reader() -> impl IntoView {
                 set_forms.update(|vec| {
                     set_limbo(vec.pop());
                 });
+                set_overlays.update(|vec| {
+                    vec.pop();
+                });
                 return;
             }
             "U" if fsm().is_none() => {
                 set_forms.update(|vec| {
                     match limbo() {
-                        Some(form) => vec.push(form),
+                        Some(form) => {
+                            set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
+                            vec.push(form)
+                        }
                         None => logging::warn!("The void cannot be shaped"),
                     };
                 });
