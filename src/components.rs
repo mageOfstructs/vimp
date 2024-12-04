@@ -352,10 +352,7 @@ fn ExportBtn() -> impl IntoView {
         };
         let svg = match doc.get_element_by_id("svg_canvas") {
             Some(el) => el,
-            None => {
-                logging::error!("BUG: svg canvas has wrong id!");
-                panic!();
-            }
+            None => panic!("BUG: svg canvas has wrong id!"),
         }
         .inner_html();
         let svg = format!(
