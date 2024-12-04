@@ -1,14 +1,14 @@
 # Goals
 
-- [ ] group support
+- [x] group support (needs testing)
 - [ ] optionally enter starting point for form in command
 - [x] undo last command
 - [x] color support
 - [x] export
 - [ ] select mode
-  - [ ] copy
+  - [x] copy
   - [x] move
-  - [ ] delete
+  - [x] delete
   - [ ] macro integration (when it's done)
     - WTF does this mean?? Why do you need macros in select mode? - Future @mageOfStructs
 - [ ] group support
