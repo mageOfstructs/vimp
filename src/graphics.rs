@@ -1,6 +1,9 @@
 use crate::components::get_cursor_pos;
+use crate::components::SelectMode;
+use crate::components::SelectState;
 use crate::components::SelectableOverlayData;
 use crate::parser::Coords;
+use leptos::use_context;
 use leptos::Signal;
 use leptos::SignalSet;
 use leptos::SignalUpdate;
@@ -590,12 +593,19 @@ fn format_css_signal(signal: Signal<u32>) -> Signal<String> {
     Signal::derive(move || format_css((signal)()))
 }
 
-// FIXME: incorrect width detection, fix by including the end points in SelectableOverlayData
-// instead of height/width
 impl IntoView for Group {
     fn into_view(self) -> leptos::View {
+        let select_mode = use_context::<SelectMode>().unwrap();
         view! {
-            <rect x={format_css_signal(self.left)} y={format_css_signal(self.top)} width={format_css_signal(self.width)} height={format_css_signal(self.height)} fill="#454554" opacity="0.3"/>
+            {move ||
+                if let SelectState::Off = select_mode() {
+                    view! {}.into_view()
+                } else {
+                    view! {
+                        <rect x={format_css_signal(self.left)} y={format_css_signal(self.top)} width={format_css_signal(self.width)} height={format_css_signal(self.height)} fill="#454554" opacity="0.3"/>
+                    }.into_view()
+                }
+            }
         }
         .into_view()
     }
