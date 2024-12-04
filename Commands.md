@@ -40,6 +40,16 @@
 - all ways of specifying colors in html are allowed
   - Note: Yes, this is a potential security risk
 
+## Select Mode
+
+- similar to how clicking links works in vim browser extensions
+- Enter Select Mode: ``e``
+- select forms: ``a,b,c,...<CR>``
+- To delete: ``d``
+- To copy: ``y``
+  - To paste later: ``p``
+  - Forms will be placed relative to the cursor, so make sure to move it before pasting
+
 ## Fast Coord System
 
 - This is probably the first unique feature of vimp
