@@ -5,8 +5,7 @@ use super::push_num;
 use std::fmt::{Debug, Display, Formatter};
 
 mod rel_coords;
-use rel_coords::FinishedRelCoord;
-pub use rel_coords::{RelCoord, RelCoordPair};
+pub use rel_coords::{FinishedRelCoord, RelCoord, RelCoordPair};
 
 #[derive(Debug, Clone)]
 pub enum Coords {

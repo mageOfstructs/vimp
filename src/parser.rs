@@ -5,7 +5,7 @@ use leptos::logging;
 use crate::components::get_cursor_pos;
 
 pub mod coords;
-use coords::{AbsCoord, CoordFSM, RelCoord};
+use coords::{AbsCoord, CoordFSM, FinishedRelCoord, RelCoord};
 pub use coords::{Coords, Direction, RelCoordPair};
 
 #[derive(Debug, Clone)]
@@ -40,30 +40,6 @@ pub struct CreateComFSM {
     color: Option<String>,
 }
 
-// impl Display for CommandFSM {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-//         write!(
-//             f,
-//             "{}{}",
-//             self.ctype,
-//             match self.coords {
-//                 None => "".to_string(),
-//                 Some(ref coords) => coords.to_string(),
-//             }
-//         )
-//     }
-// }
-
-// impl IntoView for CommandFSM {
-//     fn into_view(self) -> leptos::View {
-//         #[allow(unused_braces)]
-//         view! {
-//             {self.to_string()}
-//         }
-//         .into_view()
-//     }
-// }
-
 #[derive(Debug, Clone)]
 pub struct Command {
     coords: Coords,
@@ -73,10 +49,19 @@ pub struct Command {
 
 impl From<CreateComFSM> for Command {
     fn from(value: CreateComFSM) -> Self {
+        let mut value = value;
         let coords: Coords = match value.coords {
             None => Coords::from_cursor(),
             Some(Ok(coords)) => coords,
-            Some(Err(fsm)) => Coords::from(fsm),
+            Some(Err(fsm)) => {
+                if let CommandType::Circle(rad) = value.ctype
+                    && rad == 0
+                    && let CoordFSM::Rel(RelCoord::EnteringFirstNum(real_rad)) = fsm
+                {
+                    value.ctype = CommandType::Circle(real_rad);
+                }
+                Coords::from(fsm)
+            }
         };
         Self {
             coords,
