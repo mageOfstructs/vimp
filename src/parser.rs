@@ -5,7 +5,7 @@ use leptos::logging;
 use crate::components::get_cursor_pos;
 
 pub mod coords;
-use coords::{AbsCoord, CoordFSM, FinishedRelCoord, RelCoord};
+use coords::{AbsCoord, CoordFSM, RelCoord};
 pub use coords::{Coords, Direction, RelCoordPair};
 
 #[derive(Debug, Clone)]
