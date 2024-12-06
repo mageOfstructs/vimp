@@ -1,14 +1,22 @@
 use crate::components::get_cursor_pos;
+use crate::components::FormsWS;
+use crate::components::OverlaysWS;
+use crate::components::SelectMode;
+use crate::components::SelectState;
 use crate::components::SelectableOverlayData;
 use crate::parser::Coords;
+use leptos::use_context;
+use leptos::For;
 use leptos::Signal;
 use leptos::SignalSet;
 use leptos::SignalUpdate;
+use std::cell::RefCell;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::rc::Rc;
 
 use leptos::logging;
 use leptos::{view, RwSignal};
@@ -76,7 +84,7 @@ pub trait TrueSignalClone {
     fn deep_clone(&self) -> Self;
 }
 
-gen_form!(Line, Rect, Text, Circle);
+gen_form!(Line, Rect, Text, Circle, Group);
 
 #[derive(Clone, Debug)]
 pub struct Line {
@@ -165,22 +173,21 @@ impl GraphicsItem for Line {
         ret
     }
     fn get_overlay_dims(&self) -> SelectableOverlayData {
-        let mut x2 = self.x2.read_only();
         let mut x1 = self.x1.read_only();
-        let mut y2 = self.y2.read_only();
+        let mut x2 = self.x2.read_only();
         let mut y1 = self.y1.read_only();
-        if y1() > y2() {
-            y1 = y2;
-            y2 = self.y1.read_only();
-        }
+        let mut y2 = self.y2.read_only();
+
         if x1() > x2() {
             x1 = x2;
             x2 = self.x1.read_only();
         }
-        let width = Signal::derive(move || (x2)() - (x1)());
-        let height = Signal::derive(move || (y2)() - (y1)());
+        if y1() > y2() {
+            y1 = y2;
+            y2 = self.y1.read_only();
+        }
 
-        SelectableOverlayData::new(y1.into(), x1.into(), width, height)
+        SelectableOverlayData::new(y1.into(), x1.into(), x2.into(), y2.into())
     }
     fn move_form(&self, coords: &Coords) {
         match coords {
@@ -269,11 +276,15 @@ impl GraphicsItem for Rect {
         )
     }
     fn get_overlay_dims(&self) -> SelectableOverlayData {
+        let x = self.x.read_only();
+        let width = self.width.read_only();
+        let y = self.y.read_only();
+        let height = self.height.read_only();
         SelectableOverlayData::new(
             self.y.into(),
             self.x.into(),
-            self.width.into(),
-            self.height.into(),
+            Signal::derive(move || x() + width()),
+            Signal::derive(move || y() + height()),
         )
     }
     fn move_form(&self, coords: &Coords) {
@@ -359,13 +370,13 @@ impl GraphicsItem for Circle {
         let y = self.y.read_only();
         let radius = self.radius.read_only();
 
-        let x = Signal::derive(move || x().checked_sub(radius()).unwrap_or(0));
-        let y = Signal::derive(move || y().checked_sub(radius()).unwrap_or(0));
+        let top = Signal::derive(move || x().checked_sub(radius()).unwrap_or(0));
+        let left = Signal::derive(move || y().checked_sub(radius()).unwrap_or(0));
         SelectableOverlayData::new(
-            x,
-            y,
-            Signal::derive(move || radius() * 2),
-            Signal::derive(move || radius() * 2),
+            top,
+            left,
+            Signal::derive(move || x() + radius() * 2),
+            Signal::derive(move || y() + radius() * 2),
         )
     }
     fn move_form(&self, coords: &Coords) {
@@ -393,11 +404,13 @@ impl GraphicsItem for Text {
     fn get_overlay_dims(&self) -> SelectableOverlayData {
         let font_size = self.font_size.read_only();
         let text = self.text.read_only();
+        let x = self.x.read_only();
+        let y = self.y.read_only();
         SelectableOverlayData::new(
             self.x.into(),
             self.y.into(),
-            Signal::derive(move || font_size() * text().len() as u32),
-            self.font_size.into(),
+            Signal::derive(move || x() + font_size() * text().len() as u32),
+            Signal::derive(move || y() + font_size()),
         )
     }
     fn move_form(&self, coords: &Coords) {
@@ -570,20 +583,85 @@ impl TryFrom<Command> for Circle {
     }
 }
 
-// let's see how long we can hold this non-reactive
-#[derive(Clone)]
-struct Group {
-    forms: Vec<Form>,
+#[derive(Clone, Debug)]
+pub struct Group {
+    forms: Rc<RefCell<Vec<Form>>>,
+    left: Signal<u32>,
+    top: Signal<u32>,
+    width: Signal<u32>,
+    height: Signal<u32>,
+}
+
+fn format_css_signal(signal: Signal<u32>) -> Signal<String> {
+    Signal::derive(move || format_css((signal)()))
+}
+
+impl IntoView for Group {
+    fn into_view(self) -> leptos::View {
+        let select_mode = use_context::<SelectMode>().unwrap();
+        view! {
+            {move ||
+                if let SelectState::Off = select_mode() {
+                    view! {}.into_view()
+                } else {
+                    view! {
+                        <rect x={format_css_signal(self.left)} y={format_css_signal(self.top)} width={format_css_signal(self.width)} height={format_css_signal(self.height)} fill="#454554" opacity="0.3"/>
+                    }.into_view()
+                }
+            }
+        }
+        .into_view()
+    }
 }
 
 impl FromIterator<Form> for Group {
     fn from_iter<T: IntoIterator<Item = Form>>(iter: T) -> Self {
         let mut ret = Group {
-            forms: Vec::with_capacity(3),
+            forms: Rc::new(RefCell::new(Vec::with_capacity(3))),
+            left: Signal::derive(|| 0),
+            top: Signal::derive(|| 0),
+            width: Signal::derive(|| 0),
+            height: Signal::derive(|| 0),
         };
         for form in iter {
-            ret.forms.push(form);
+            ret.forms.borrow_mut().push(form);
         }
+        let tmp = Rc::clone(&ret.forms);
+        ret.left = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.left())
+                .min()
+                .unwrap_or(0)
+        });
+        let tmp = Rc::clone(&ret.forms);
+        ret.top = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.top())
+                .min()
+                .unwrap_or(0)
+        });
+        let tmp = Rc::clone(&ret.forms);
+        ret.width = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.end_x())
+                .max()
+                .unwrap_or(100)
+        });
+        let tmp = Rc::clone(&ret.forms);
+        ret.height = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.end_y())
+                .max()
+                .unwrap_or(100)
+        });
         ret
     }
 }
@@ -591,46 +669,81 @@ impl FromIterator<Form> for Group {
 impl GraphicsItem for Group {
     fn key(&self) -> u128 {
         let mut hasher = DefaultHasher::new();
-        for form in &self.forms {
+        for form in &*self.forms.borrow() {
             hasher.write_u128(form.key());
         }
         hasher.finish() as u128
     }
     fn move_form(&self, coords: &Coords) {
-        for form in &self.forms {
+        for form in &*self.forms.borrow() {
             form.move_form(coords);
         }
     }
     fn get_overlay_dims(&self) -> SelectableOverlayData {
-        let copy = self.clone(); // TODO: let's see if we can get this to not need two copies
-        let copy2 = self.clone();
-        SelectableOverlayData::new(
-            Signal::derive(move || {
-                copy.forms
-                    .iter()
-                    .map(|f| f.get_overlay_dims())
-                    .clone()
-                    .map(|sod| sod.top())
-                    .min()
-                    .unwrap_or(0)
-            }),
-            Signal::derive(move || {
-                copy2
-                    .forms
-                    .iter()
-                    .map(|f| f.get_overlay_dims())
-                    .map(|sod| sod.left())
-                    .min()
-                    .unwrap_or(0)
-            }),
-            RwSignal::new(0).into(),
-            RwSignal::new(0).into(),
-        )
+        SelectableOverlayData::new(self.top, self.left, self.width, self.height)
     }
 }
 
 impl TrueSignalClone for Group {
     fn deep_clone(&self) -> Self {
-        self.clone()
+        let forms: Vec<_> = self
+            .forms
+            .borrow()
+            .iter()
+            .map(|form| form.deep_clone())
+            .collect();
+        let set_forms = use_context::<FormsWS>().unwrap().0;
+        let set_overlays = use_context::<OverlaysWS>().unwrap().0;
+        set_overlays.update(|vec| {
+            forms
+                .iter()
+                .for_each(|form| vec.push(form.get_overlay_dims()))
+        });
+        set_forms.update(|vec| forms.iter().for_each(|form| vec.push(form.clone())));
+        let mut ret = Self {
+            forms: Rc::new(RefCell::new(forms)),
+            left: Signal::derive(|| 0),
+            top: Signal::derive(|| 0),
+            width: Signal::derive(|| 0),
+            height: Signal::derive(|| 0),
+        };
+        let tmp = Rc::clone(&ret.forms);
+        ret.left = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.left())
+                .min()
+                .unwrap_or(0)
+        });
+        let tmp = Rc::clone(&ret.forms);
+        ret.top = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.top())
+                .min()
+                .unwrap_or(0)
+        });
+        let tmp = Rc::clone(&ret.forms);
+        ret.width = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.end_x())
+                .max()
+                .unwrap_or(100)
+        });
+        let tmp = Rc::clone(&ret.forms);
+        ret.height = Signal::derive(move || {
+            tmp.borrow()
+                .iter()
+                .map(|f| f.get_overlay_dims())
+                .map(|sod| sod.end_y())
+                .max()
+                .unwrap_or(100)
+        });
+
+        ret
     }
 }

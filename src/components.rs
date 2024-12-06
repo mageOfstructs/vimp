@@ -1,4 +1,4 @@
-use crate::graphics::TrueSignalClone;
+use crate::graphics::{Group, TrueSignalClone};
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
@@ -31,7 +31,8 @@ struct CursorSetter {
     sety: WriteSignal<u32>,
 }
 
-const REGEX: &str = "[lra]?[0-9]*[hjkl]?(;[0-9]*[hjkl]?;)?";
+const REGEX: &str = "[lra]?[0-9]*[hjkl]?(;[0-9]*[hjkl]?;)?"; // TODO: is this even neccessary
+                                                             // anymore?
 #[component]
 pub fn Canvas() -> impl IntoView {
     let (x, setx) = create_signal(50);
@@ -137,12 +138,18 @@ impl Fn<()> for SelectMode {
 #[derive(Clone)]
 struct SelectBuffer(ReadSignal<Vec<(usize, Form)>>);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum SelectState {
     Off,
     SelectModeOn,
     FormsSelected,
 }
+
+#[derive(Clone)]
+pub struct FormsWS(pub WriteSignal<Vec<Form>>);
+
+#[derive(Clone)]
+pub struct OverlaysWS(pub WriteSignal<Vec<SelectableOverlayData>>);
 
 #[component]
 fn Reader() -> impl IntoView {
@@ -157,13 +164,18 @@ fn Reader() -> impl IntoView {
     provide_context(SelectMode(select_mode));
     provide_context(SelectBuffer(select_buffer));
 
+    // FIXME: in urgent need of a refactor
+    // TODO: in urgent need of a refactor
+    // BUG: in urgent need of a refactor
     let on_keypress = move |evt: KeyboardEvent| {
         let mut next_char = evt.key();
         logging::log!("We got {next_char}!");
+        logging::log!("Select mode: {:?}", select_mode());
         match select_mode() {
             SelectState::SelectModeOn => {
                 if next_char.len() == 1 {
                     set_com.update(|com| com.push_str(&next_char));
+                    return;
                 } else if next_char == "Enter" {
                     logging::log!("We got da '{}'", com());
                     let idxs: Vec<_> = com().split(',').map(|str| Namer::get_index(str)).collect();
@@ -181,8 +193,8 @@ fn Reader() -> impl IntoView {
                             logging::log!("Successfully updated the selected prop(s)");
                         }
                     }
+                    return;
                 }
-                return;
             }
             SelectState::FormsSelected => match &*next_char {
                 "d" | "y" => {
@@ -197,8 +209,32 @@ fn Reader() -> impl IntoView {
                         }
                         set_select_buffer.update(|vec| vec.clear());
                     }
+                    logging::log!("made it here");
                     set_select_mode(SelectState::Off);
+                    set_overlays.update(|vec| {
+                        select_buffer()
+                            .iter()
+                            .map(|el| el.0)
+                            .for_each(|i| vec[i].selected.set(false));
+                    });
                     set_com.update(|str| str.clear());
+                    return;
+                }
+                "g" => {
+                    set_forms.update(|vec| {
+                        let group =
+                            Group::from_iter(select_buffer().iter().map(|tuple| tuple.1.clone()));
+                        set_overlays.update(|vec| vec.push(group.get_overlay_dims()));
+                        vec.push(Form::Group(group));
+                    });
+                    clear_select(
+                        set_com,
+                        set_fsm,
+                        set_select_mode,
+                        set_overlays,
+                        select_buffer,
+                        set_select_buffer,
+                    );
                     return;
                 }
                 _ => {}
@@ -207,16 +243,14 @@ fn Reader() -> impl IntoView {
         }
         match &*next_char {
             "Escape" => {
-                set_com.update(|str| str.clear());
-                set_fsm(None);
-                set_select_mode(SelectState::Off);
-                set_overlays.update(|vec| {
-                    select_buffer()
-                        .iter()
-                        .map(|el| el.0)
-                        .for_each(|i| vec[i].selected.set(false));
-                });
-                set_select_buffer.update(|vec| vec.clear());
+                clear_select(
+                    set_com,
+                    set_fsm,
+                    set_select_mode,
+                    set_overlays,
+                    select_buffer,
+                    set_select_buffer,
+                );
             }
             "e" if fsm().is_none() => {
                 set_select_mode(SelectState::SelectModeOn);
@@ -225,14 +259,27 @@ fn Reader() -> impl IntoView {
             "p" => {
                 set_select_buffer.update(|select_buffer| {
                     for form in select_buffer.iter().map(|(_, form)| form) {
+                        if let Form::Group(_) = form {
+                            provide_context(FormsWS(set_forms));
+                            provide_context(OverlaysWS(set_overlays));
+                        }
                         let form = form.deep_clone();
                         let (x, y) = get_cursor_pos();
                         form.move_form(&Coords::AbsCoord(x, y));
+                        set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
                         set_forms.update(|vec| {
                             vec.push(form);
                         });
                     }
                 });
+                clear_select(
+                    set_com,
+                    set_fsm,
+                    set_select_mode,
+                    set_overlays,
+                    select_buffer,
+                    set_select_buffer,
+                );
                 return;
             }
             "Backspace" if !com().is_empty() => {
@@ -254,12 +301,18 @@ fn Reader() -> impl IntoView {
                 set_forms.update(|vec| {
                     set_limbo(vec.pop());
                 });
+                set_overlays.update(|vec| {
+                    vec.pop();
+                });
                 return;
             }
             "U" if fsm().is_none() => {
                 set_forms.update(|vec| {
                     match limbo() {
-                        Some(form) => vec.push(form),
+                        Some(form) => {
+                            set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
+                            vec.push(form)
+                        }
                         None => logging::warn!("The void cannot be shaped"),
                     };
                 });
@@ -337,10 +390,7 @@ fn ExportBtn() -> impl IntoView {
         };
         let svg = match doc.get_element_by_id("svg_canvas") {
             Some(el) => el,
-            None => {
-                logging::error!("BUG: svg canvas has wrong id!");
-                panic!();
-            }
+            None => panic!("BUG: svg canvas has wrong id!"),
         }
         .inner_html();
         let svg = format!(
@@ -393,8 +443,8 @@ fn mouseclick(evt: MouseEvent) {
 pub struct SelectableOverlayData {
     top: Signal<u32>,
     left: Signal<u32>,
-    width: Signal<u32>,
-    height: Signal<u32>,
+    end_x: Signal<u32>,
+    end_y: Signal<u32>,
     selected: RwSignal<bool>,
 }
 
@@ -410,14 +460,14 @@ impl SelectableOverlayData {
     pub fn new(
         top: Signal<u32>,
         left: Signal<u32>,
-        width: Signal<u32>,
-        height: Signal<u32>,
+        end_x: Signal<u32>,
+        end_y: Signal<u32>,
     ) -> Self {
         Self {
             top,
             left,
-            width,
-            height,
+            end_x,
+            end_y,
             selected: RwSignal::new(false),
         }
     }
@@ -433,6 +483,12 @@ impl SelectableOverlayData {
     pub fn left(&self) -> u32 {
         (self.left)()
     }
+    pub fn end_x(&self) -> u32 {
+        (self.end_x)()
+    }
+    pub fn end_y(&self) -> u32 {
+        (self.end_y)()
+    }
     pub fn set_selected(&mut self, selected: bool) {
         self.selected.set(selected);
     }
@@ -442,15 +498,17 @@ impl SelectableOverlayData {
 fn SelectableOverlay(
     top: Signal<u32>,
     left: Signal<u32>,
+    end_x: Signal<u32>,
+    end_y: Signal<u32>,
     selected: ReadSignal<bool>,
     namer: ReadSignal<Namer>,
     set_namer: WriteSignal<Namer>,
 ) -> impl IntoView {
     let style = move || {
         format!(
-            "position: absolute; top: {}%; left: {}%; width: 5%; height: 5%; border: 2px inset; border-radius: 10px",
-            top(),
-            left(),
+            "position: absolute; top: {}%; left: {}%; min-width: 5%; min-height: 5%; border: 2px inset; border-radius: 10px; font-size: 1em; text-align: center",
+            top() + ((end_y() as i32 - top() as i32)/2) as u32,
+            left() + ((end_x() as i32 - left() as i32)/2) as u32,
         )
     };
     let class = move || format!("selectable {}", if selected() { "selected" } else { "" });
@@ -527,7 +585,7 @@ fn Cursor() -> impl IntoView {
                             children=move |el| {
                                 logging::log!("auf bessere Zeiten warten");
                             view! {
-                                <SelectableOverlay top={el.top} left={el.left} selected={el.selected.read_only()} namer={namer} set_namer={set_namer}/>
+                                <SelectableOverlay top={el.top} left={el.left} end_x={el.end_x} end_y={el.end_y} selected={el.selected.read_only()} namer={namer} set_namer={set_namer}/>
                             }}
                         />
 
@@ -549,4 +607,24 @@ pub fn Selectable(edit: ReadSignal<bool>, children: Children) -> impl IntoView {
             {children()}
         </div>
     }
+}
+
+fn clear_select(
+    set_com: WriteSignal<String>,
+    set_fsm: WriteSignal<Option<CommandFSM>>,
+    set_select_mode: WriteSignal<SelectState>,
+    set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
+    select_buffer: ReadSignal<Vec<(usize, Form)>>,
+    set_select_buffer: WriteSignal<Vec<(usize, Form)>>,
+) {
+    set_com.update(|str| str.clear());
+    set_fsm(None);
+    set_select_mode(SelectState::Off);
+    set_overlays.update(|vec| {
+        select_buffer()
+            .iter()
+            .map(|el| el.0)
+            .for_each(|i| vec[i].selected.set(false));
+    });
+    set_select_buffer.update(|vec| vec.clear());
 }
