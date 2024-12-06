@@ -86,7 +86,7 @@ fn parse_command(
                     form.1.move_form(&com.coords());
                 }
             }
-            _ => todo!(),
+            _ => unreachable!(),
         }
     } else {
         let form = match com.ctype() {
