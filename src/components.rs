@@ -31,7 +31,8 @@ struct CursorSetter {
     sety: WriteSignal<u32>,
 }
 
-const REGEX: &str = "[lra]?[0-9]*[hjkl]?(;[0-9]*[hjkl]?;)?";
+const REGEX: &str = "[lra]?[0-9]*[hjkl]?(;[0-9]*[hjkl]?;)?"; // TODO: is this even neccessary
+                                                             // anymore?
 #[component]
 pub fn Canvas() -> impl IntoView {
     let (x, setx) = create_signal(50);
@@ -505,7 +506,7 @@ fn SelectableOverlay(
 ) -> impl IntoView {
     let style = move || {
         format!(
-            "position: absolute; top: {}%; left: {}%; width: 5%; height: 5%; border: 2px inset; border-radius: 10px",
+            "position: absolute; top: {}%; left: {}%; min-width: 5%; min-height: 5%; border: 2px inset; border-radius: 10px; font-size: 1em; text-align: center",
             top() + ((end_y() as i32 - top() as i32)/2) as u32,
             left() + ((end_x() as i32 - left() as i32)/2) as u32,
         )
