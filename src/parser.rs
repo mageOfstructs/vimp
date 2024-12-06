@@ -282,10 +282,14 @@ pub struct RelCoordPair(pub u32, pub Direction);
 
 impl RelCoordPair {
     pub fn get_coords(&self, x: u32, y: u32) -> (u32, u32) {
+        // FIXME: this panics if one tries to move a form even partially out-of-bounds, the
+        // solution to this should be to truncate the form to fit, however this requires knowing
+        // both points, which cannot be known by this + this is a widely used API, so changing it
+        // will be painful
         match self.1 {
-            Direction::Up => (x, y - self.0),
+            Direction::Up => (x, y.checked_sub(self.0).unwrap_or(0)), // hotfix to prevent panics
             Direction::Down => (x, y + self.0),
-            Direction::Left => (x - self.0, y),
+            Direction::Left => (x.checked_sub(self.0).unwrap_or(0), y), // hotfix to prevent panics
             Direction::Right => (x + self.0, y),
         }
     }
