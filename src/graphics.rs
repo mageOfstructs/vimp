@@ -6,7 +6,6 @@ use crate::components::SelectState;
 use crate::components::SelectableOverlayData;
 use crate::parser::Coords;
 use leptos::use_context;
-use leptos::For;
 use leptos::Signal;
 use leptos::SignalSet;
 use leptos::SignalUpdate;
@@ -24,6 +23,8 @@ use leptos::{window, IntoView};
 
 use crate::parser::Command;
 use crate::parser::CommandType;
+
+const LOREM_IPSUM: &str = "I'm such a silly boykisser";
 
 macro_rules! gen_form {
     ($($type:ident),+) => {
@@ -409,6 +410,8 @@ impl GraphicsItem for Text {
         SelectableOverlayData::new(
             self.x.into(),
             self.y.into(),
+            // which idiot thought adding two random and barely related values with
+            // completely different units would've been a good idea? Oh, wait...
             Signal::derive(move || x() + font_size() * text().len() as u32),
             Signal::derive(move || y() + font_size()),
         )
@@ -463,7 +466,7 @@ impl IntoView for Text {
     fn into_view(self) -> leptos::View {
         let (x, y) = self.css_coords_reactive();
         view! {
-            <text x={x} y={y} fill={self.color}>{self.text}</text>
+            <text x={x} y={y} fill={self.color} style={move || format!("font-size: {}em", (self.font_size)())}>{self.text}</text>
         }
         .into_view()
     }
@@ -535,9 +538,7 @@ impl TryFrom<Command> for Text {
         match command.ctype() {
             CommandType::Text => {
                 let text = loop {
-                    match window()
-                        .prompt_with_message_and_default("Text:", "I'm such a silly boykisser")
-                    {
+                    match window().prompt_with_message_and_default("Text:", LOREM_IPSUM) {
                         Ok(text) => match text {
                             Some(text) => break text,
                             None => {
@@ -555,7 +556,7 @@ impl TryFrom<Command> for Text {
                     x: x.into(),
                     y: y.into(),
                     text: text.into(),
-                    font_size: Default::default(),
+                    font_size: RwSignal::new(1),
                     color: color.into(),
                 })
             }
