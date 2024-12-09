@@ -148,6 +148,9 @@ pub struct FormsWS(pub WriteSignal<Vec<Form>>);
 #[derive(Clone)]
 pub struct OverlaysWS(pub WriteSignal<Vec<SelectableOverlayData>>);
 
+#[derive(Clone)]
+pub struct PreviewWS(pub WriteSignal<Option<Form>>);
+
 #[component]
 fn Reader() -> impl IntoView {
     let (com, set_com) = create_signal(String::new());
@@ -157,7 +160,9 @@ fn Reader() -> impl IntoView {
     let (select_buffer, set_select_buffer) = create_signal(Vec::<(usize, Form)>::new());
     let (select_mode, set_select_mode) = create_signal(SelectState::Off);
     let (overlays, set_overlays) = create_signal(Vec::<SelectableOverlayData>::new());
+    let (preview, set_preview) = create_signal(Option::<Form>::None);
     provide_context(overlays);
+    provide_context(PreviewWS(set_preview));
     provide_context(SelectMode(select_mode));
     provide_context(SelectBuffer(select_buffer));
 
@@ -292,6 +297,7 @@ fn Reader() -> impl IntoView {
                     FSMResult::OkFSM(fsm) => Some(fsm),
                     FSMResult::Err(_) => None,
                 });
+                update_preview(&fsm);
                 return;
             }
             "u" if fsm().is_none() => {
@@ -345,6 +351,7 @@ fn Reader() -> impl IntoView {
                     }))
                 }
             }
+            update_preview(&fsm);
         }
     };
 
@@ -357,6 +364,13 @@ fn Reader() -> impl IntoView {
             <p>Current command: {com}</p>
             <div class="container">
             <svg id="svg_canvas" style="width: 100%; height: 100%; position: absolute">
+                {move ||
+                    if let Some(form) = preview() {
+                        form.into_view()
+                    } else {
+                        view! {}.into_view()
+                    }
+                }
                 <For each=forms
                     key=|el| {el.key()}
                     children= move |el| {
@@ -367,6 +381,16 @@ fn Reader() -> impl IntoView {
             <Cursor/>
             </div>
         </div>
+    }
+}
+
+fn update_preview(fsm: &ReadSignal<Option<CommandFSM>>) {
+    let set_preview = use_context::<PreviewWS>().unwrap().0;
+    if let Some(fsm) = fsm() {
+        set_preview(match fsm.try_into() {
+            Ok(form) => Some(form),
+            Err(_) => None,
+        });
     }
 }
 

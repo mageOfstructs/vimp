@@ -2,7 +2,10 @@ use std::fmt::{Debug, Display, Formatter};
 
 use leptos::logging;
 
-use crate::components::get_cursor_pos;
+use crate::{
+    components::get_cursor_pos,
+    graphics::{Circle, Form, Line, Rect, Text},
+};
 
 #[derive(Debug, Clone)]
 pub enum CommandType {
@@ -65,6 +68,21 @@ pub struct Command {
     coords: Coords,
     ctype: CommandType,
     color: Option<String>,
+}
+
+impl TryInto<Form> for CommandFSM {
+    type Error = CommandType;
+    fn try_into(self) -> Result<Form, Self::Error> {
+        let com = Command::from(self);
+        let res = match com.ctype {
+            CommandType::Line => Form::Line(Line::try_from(com).unwrap()),
+            CommandType::Rectangle => Form::Rect(Rect::try_from(com).unwrap()),
+            CommandType::Text => Form::Text(Text::try_from(com).unwrap()),
+            CommandType::Circle(_) => Form::Circle(Circle::try_from(com).unwrap()),
+            other => return Err(other),
+        };
+        Ok(res)
+    }
 }
 
 impl From<CommandFSM> for Command {
