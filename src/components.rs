@@ -11,7 +11,6 @@ use leptos::{
     view, window, For, IntoView, ReadSignal, SignalUpdate, WriteSignal,
 };
 use leptos::{window_event_listener, SignalSet};
-use regex::Regex;
 use std::hash::{DefaultHasher, Hasher};
 use wasm_bindgen::JsValue;
 
@@ -31,8 +30,6 @@ struct CursorSetter {
     sety: WriteSignal<u32>,
 }
 
-const REGEX: &str = "[lra]?[0-9]*[hjkl]?(;[0-9]*[hjkl]?;)?"; // TODO: is this even neccessary
-                                                             // anymore?
 #[component]
 pub fn Canvas() -> impl IntoView {
     let (x, setx) = create_signal(50);
@@ -326,32 +323,28 @@ fn Reader() -> impl IntoView {
         if next_char.len() == 1 {
             let next_char = next_char.chars().next().unwrap();
             set_com.update(|str| str.push(next_char));
-            if Regex::new(REGEX).unwrap().is_match(&com()) {
-                match fsm() {
-                    Some(fsm) => match fsm.advance(next_char) {
-                        Ok(com) => {
-                            parse_command(com, set_forms, set_overlays);
-                            logging::log!("Finished Command parsing");
-                            set_fsm(None);
-                            logging::log!("Updated State 1");
-                            set_com.update(|str| str.clear());
-                            logging::log!("Updated State 2");
-                        }
-                        Err(new_fsm) => set_fsm(Some(new_fsm)),
-                    },
-                    None => set_fsm(Some(match CommandFSM::new(next_char) {
+            match fsm() {
+                Some(fsm) => match fsm.advance(next_char) {
+                    Ok(com) => {
+                        parse_command(com, set_forms, set_overlays);
+                        logging::log!("Finished Command parsing");
+                        set_fsm(None);
+                        logging::log!("Updated State 1");
+                        set_com.update(|str| str.clear());
+                        logging::log!("Updated State 2");
+                    }
+                    Err(new_fsm) => set_fsm(Some(new_fsm)),
+                },
+                None => {
+                    set_fsm(Some(match CommandFSM::new(next_char) {
                         Ok(fsm) => fsm,
                         Err(err) => {
                             logging::error!("Couldn't create CommandFSM, because this stoopid char snuck in: {err}");
                             return;
                         }
-                    })),
+                    }))
                 }
-            } else {
-                set_com.update(|str| {
-                    str.pop();
-                })
-            };
+            }
         }
     };
 
@@ -507,8 +500,8 @@ fn SelectableOverlay(
     let style = move || {
         format!(
             "position: absolute; top: {}%; left: {}%; min-width: 5%; min-height: 5%; border: 2px inset; border-radius: 10px; font-size: 1em; text-align: center",
-            top() + ((end_y() as i32 - top() as i32)/2) as u32,
-            left() + ((end_x() as i32 - left() as i32)/2) as u32,
+            top() + ((end_y().checked_sub(top()).unwrap_or(0))/2) as u32,
+            left() + ((end_x().checked_sub(left()).unwrap_or(0))/2) as u32,
         )
     };
     let class = move || format!("selectable {}", if selected() { "selected" } else { "" });
