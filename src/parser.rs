@@ -159,9 +159,7 @@ impl CommandFSM {
                 ..self
             });
         }
-        if let Some(ref mut str) = self.color
-            && let Some(Ok(_)) = self.coords
-        {
+        if let Some(ref mut str) = self.color {
             logging::log!("Got part of color: {next_char}");
             return match next_char {
                 '\n' | ';' => Ok(Command::from(self)),
