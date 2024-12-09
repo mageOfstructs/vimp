@@ -14,6 +14,9 @@
 - [ ] macro support
 - [ ] finish goals
 - [ ] live preview
+  - [x] normal mode
+  - [ ] select mode
+  - [ ] forms selected mode
 - [ ] grid (visual aid to help figure out coords)
 - [ ] options
   - [ ] remapable keybinds
