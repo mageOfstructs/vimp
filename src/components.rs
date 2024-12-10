@@ -11,6 +11,7 @@ use leptos::{
     view, window, For, IntoView, ReadSignal, SignalUpdate, WriteSignal,
 };
 use leptos::{window_event_listener, SignalSet};
+use std::cell::RefCell;
 use std::hash::{DefaultHasher, Hasher};
 use wasm_bindgen::JsValue;
 
@@ -166,6 +167,9 @@ fn Reader() -> impl IntoView {
     provide_context(SelectMode(select_mode));
     provide_context(SelectBuffer(select_buffer));
 
+    let last_idx: RefCell<Option<usize>> = RefCell::new(None);
+    let last_len: RefCell<Option<usize>> = RefCell::new(None);
+
     // FIXME: in urgent need of a refactor
     // TODO: in urgent need of a refactor
     // BUG: in urgent need of a refactor
@@ -177,26 +181,72 @@ fn Reader() -> impl IntoView {
             SelectState::SelectModeOn => {
                 if next_char.len() == 1 {
                     set_com.update(|com| com.push_str(&next_char));
-                    return;
-                } else if next_char == "Enter" {
-                    logging::log!("We got da '{}'", com());
-                    let idxs: Vec<_> = com().split(',').map(|str| Namer::get_index(str)).collect();
-                    set_com.update(|str| str.clear());
+                } else if next_char == "Backspace" && !com().is_empty() {
+                    set_com.update(|com| {
+                        com.pop();
+                    });
+                }
 
-                    for i in idxs {
+                let idxs: Vec<_> = com()
+                    .split(',')
+                    .filter(|str| !str.is_empty())
+                    .map(|str| Namer::get_index(str))
+                    .collect();
+
+                let last_len_ref = *last_len.borrow();
+                if let None = last_len_ref {
+                    *last_len.borrow_mut() = Some(idxs.len());
+                }
+                logging::log!("idxs: {idxs:?}");
+
+                let last_idx_ref = *last_idx.borrow();
+                let new_last = if com().is_empty() {
+                    None
+                } else {
+                    idxs.last().copied()
+                };
+
+                logging::log!("last: {last_idx_ref:?}, new_last: {new_last:?}");
+                if new_last != last_idx_ref {
+                    if let Some(len) = last_len_ref
+                        && len >= idxs.len()
+                        && let Some(i) = last_idx_ref
+                    {
+                        overlays.with(|vec| {
+                            vec[i].set_selected(false);
+                        });
+                    }
+                    if let Some(new_last) = new_last
+                        && new_last < forms().len()
+                    {
+                        overlays.with(|vec| {
+                            vec[new_last].set_selected(true);
+                        });
+                    }
+                    *last_idx.borrow_mut() = new_last;
+                } else if last_idx_ref.is_none() {
+                    for i in &idxs {
+                        let i = *i;
                         logging::log!("This should be index '{}'", i);
                         if i >= forms().len() || i >= overlays().len() {
                             logging::error!("But this index is out of bounce!");
                         } else {
                             logging::log!("Updating the selected prop");
                             overlays.with(|vec| vec[i].selected.set(true));
-                            set_select_buffer.update(|buf| buf.push((i, forms()[i].clone())));
-                            set_select_mode(SelectState::FormsSelected);
                             logging::log!("Successfully updated the selected prop(s)");
                         }
                     }
-                    return;
                 }
+
+                if next_char == "Enter" {
+                    logging::log!("We got da '{}'", com());
+                    idxs.iter().for_each(|i| {
+                        set_select_buffer.update(|buf| buf.push((*i, forms()[*i].clone())));
+                    });
+                    set_select_mode(SelectState::FormsSelected);
+                    set_com.update(|str| str.clear());
+                }
+                return;
             }
             SelectState::FormsSelected => match &*next_char {
                 "d" | "y" => {
@@ -490,7 +540,10 @@ impl SelectableOverlayData {
     }
     fn key(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
-        hasher.write_u8((self.selected)() as u8);
+        hasher.write_u32(self.top());
+        hasher.write_u32(self.left());
+        hasher.write_u32(self.end_x());
+        hasher.write_u32(self.end_y());
         hasher.finish()
     }
 
@@ -506,7 +559,7 @@ impl SelectableOverlayData {
     pub fn end_y(&self) -> u32 {
         (self.end_y)()
     }
-    pub fn set_selected(&mut self, selected: bool) {
+    pub fn set_selected(&self, selected: bool) {
         self.selected.set(selected);
     }
 }
@@ -518,8 +571,7 @@ fn SelectableOverlay(
     end_x: Signal<u32>,
     end_y: Signal<u32>,
     selected: ReadSignal<bool>,
-    namer: ReadSignal<Namer>,
-    set_namer: WriteSignal<Namer>,
+    name: String,
 ) -> impl IntoView {
     let style = move || {
         format!(
@@ -529,8 +581,6 @@ fn SelectableOverlay(
         )
     };
     let class = move || format!("selectable {}", if selected() { "selected" } else { "" });
-    let name = namer().next_name();
-    set_namer.update(|namer| namer.inc(0));
     view! {
         <div class={class} style={style}>{name}</div>
     }
@@ -573,6 +623,11 @@ impl Namer {
         self.inc(0);
         ret
     }
+
+    pub fn clear(&mut self) {
+        self.cur_name.clear();
+        self.cur_name.push('a');
+    }
 }
 
 #[component]
@@ -588,21 +643,28 @@ fn Cursor() -> impl IntoView {
     };
     let select_mode = use_context::<SelectMode>().unwrap();
     let overlays = use_context::<ReadSignal<Vec<SelectableOverlayData>>>().unwrap();
+    let (namer, set_namer) = create_signal(Namer::new());
+
     view! {
         <div id="overlay" on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
     {move || {
                 match select_mode() {
-                    SelectState::Off => {view! {}.into_view()},
+                    SelectState::Off => {
+                        set_namer.update(|namer| namer.clear()); // not the most
+                    // efficient place to put this in
+                        view! {}.into_view()
+                    },
                     _ => {
-                    let (namer, set_namer) = create_signal(Namer::new());
                     view! {
                         <For
                             each=overlays
                             key=|el| el.key()
                             children=move |el| {
                                 logging::log!("auf bessere Zeiten warten");
+                                let name = namer().next_name();
+                                set_namer.update(|namer| namer.inc(0));
                             view! {
-                                <SelectableOverlay top={el.top} left={el.left} end_x={el.end_x} end_y={el.end_y} selected={el.selected.read_only()} namer={namer} set_namer={set_namer}/>
+                                <SelectableOverlay top={el.top} left={el.left} end_x={el.end_x} end_y={el.end_y} selected={el.selected.read_only()} name={name}/>
                             }}
                         />
 
