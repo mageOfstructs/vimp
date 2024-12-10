@@ -13,10 +13,9 @@
     - WTF does this mean?? Why do you need macros in select mode? - Future @mageOfStructs
 - [ ] macro support
 - [ ] finish goals
-- [ ] live preview
+- [x] live preview
   - [x] normal mode
-  - [ ] select mode
-  - [ ] forms selected mode
+  - [x] select mode
 - [ ] grid (visual aid to help figure out coords)
 - [ ] options
   - [ ] remapable keybinds
