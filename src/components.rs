@@ -516,13 +516,17 @@ pub struct SelectableOverlayData {
     selected: RwSignal<bool>,
 }
 
-// impl IntoView for SelectableOverlayData {
-//     fn into_view(self) -> leptos::View {
-//         view! {
-//             <SelectableOverlay top={self.top} left={self.left} width={self.width} height={self.height}/>
-//         }
-//     }
-// }
+impl IntoView for SelectableOverlayData {
+    fn into_view(self) -> leptos::View {
+        logging::log!("auf bessere Zeiten warten");
+        let namer = use_context::<RwSignal<Namer>>().unwrap();
+        let name = namer().next_name();
+        namer.update(|namer| namer.inc());
+        view! {
+            <SelectableOverlay top={self.top} left={self.left} end_x={self.end_x} end_y={self.end_y} selected={self.selected.read_only()} name={name}/>
+        }
+    }
+}
 
 impl SelectableOverlayData {
     pub fn new(
@@ -650,7 +654,8 @@ fn Cursor() -> impl IntoView {
     };
     let select_mode = use_context::<SelectMode>().unwrap();
     let overlays = use_context::<ReadSignal<Vec<SelectableOverlayData>>>().unwrap();
-    let (namer, set_namer) = create_signal(Namer::new());
+    let namer = RwSignal::new(Namer::new());
+    provide_context(namer);
 
     view! {
         <div id="overlay" on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
@@ -658,24 +663,12 @@ fn Cursor() -> impl IntoView {
             when=move || select_mode() == SelectState::Off
             fallback=move || {
                 view! {
-                    <For
-                        each=overlays
-                        key=|el| el.key()
-                        children=move |el| {
-                            logging::log!("auf bessere Zeiten warten");
-                            let name = namer().next_name();
-                            set_namer.update(|namer| namer.inc());
-                            view! {
-                                <SelectableOverlay top={el.top} left={el.left} end_x={el.end_x} end_y={el.end_y} selected={el.selected.read_only()} name={name}/>
-                            }
-                        }
-                    />
-
+                    {overlays}
                 }
             }
         >
             {move || {
-                set_namer.update(|namer| namer.clear()); // not the most
+                namer.update(|namer| namer.clear()); // not the most
                 // efficient place to put this in
                 view! {}.into_view()
             }}
