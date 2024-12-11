@@ -4,6 +4,7 @@ use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
 use leptos::Children;
 use leptos::RwSignal;
+use leptos::Show;
 use leptos::Signal;
 use leptos::SignalWith;
 use leptos::{
@@ -136,7 +137,7 @@ impl Fn<()> for SelectMode {
 #[derive(Clone)]
 struct SelectBuffer(ReadSignal<Vec<(usize, Form)>>);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SelectState {
     Off,
     SelectModeOn,
@@ -602,7 +603,9 @@ impl Namer {
             cur_name: vec!['a'],
         }
     }
-    fn inc(&mut self, idx: usize) {
+    // TODO: refactor into separate file, having internal methods accessible from the outside feels
+    // wrong
+    fn inc_internal(&mut self, idx: usize) {
         if self.cur_name.len() > idx {
             self.cur_name[idx] = (self.cur_name[idx] as u8 + 1) as char;
         } else {
@@ -610,8 +613,12 @@ impl Namer {
         }
         if self.cur_name[idx] as u8 == 123 {
             self.cur_name[idx] = 'a';
-            self.inc(idx + 1);
+            self.inc_internal(idx + 1);
         }
+    }
+
+    fn inc(&mut self) {
+        self.inc_internal(0);
     }
     pub fn next_name(&mut self) -> String {
         let mut ret = String::with_capacity(self.cur_name.len());
@@ -620,7 +627,7 @@ impl Namer {
             ret.push(self.cur_name[i])
         }
         logging::log!("Namer: returning {ret}!");
-        self.inc(0);
+        self.inc();
         ret
     }
 
@@ -647,34 +654,35 @@ fn Cursor() -> impl IntoView {
 
     view! {
         <div id="overlay" on:mousedown={mouseclick} style="width: 100%; height: 100%; z-index: 1; position: absolute; box-sizing: border-box"> //  padding-right: 5%; padding-bottom: 2%;
-    {move || {
-                match select_mode() {
-                    SelectState::Off => {
-                        set_namer.update(|namer| namer.clear()); // not the most
-                    // efficient place to put this in
-                        view! {}.into_view()
-                    },
-                    _ => {
-                    view! {
-                        <For
-                            each=overlays
-                            key=|el| el.key()
-                            children=move |el| {
-                                logging::log!("auf bessere Zeiten warten");
-                                let name = namer().next_name();
-                                set_namer.update(|namer| namer.inc(0));
+        <Show
+            when=move || select_mode() == SelectState::Off
+            fallback=move || {
+                view! {
+                    <For
+                        each=overlays
+                        key=|el| el.key()
+                        children=move |el| {
+                            logging::log!("auf bessere Zeiten warten");
+                            let name = namer().next_name();
+                            set_namer.update(|namer| namer.inc());
                             view! {
                                 <SelectableOverlay top={el.top} left={el.left} end_x={el.end_x} end_y={el.end_y} selected={el.selected.read_only()} name={name}/>
-                            }}
-                        />
+                            }
+                        }
+                    />
 
-                    }
                 }
-                }
+            }
+        >
+            {move || {
+                set_namer.update(|namer| namer.clear()); // not the most
+                // efficient place to put this in
+                view! {}.into_view()
             }}
-            <div style={style}>
-                UwU
-            </div>
+        </Show>
+        <div style={style}>
+            UwU
+        </div>
         </div>
     }
 }
