@@ -340,6 +340,8 @@ impl From<RelCoord> for Coords {
             RelCoord::EnteringDistance(dir, dist) => {
                 logging::log!("{dir:?}: {dist}");
                 let (x, y) = get_cursor_pos();
+                // BUG: surprise, surprise, this
+                // can cause an underflow if the user enters a distance greater than 100%
                 return Coords::AbsCoord(
                     (x as i32 + dir.horiz.resolve(dist)) as u32,
                     (y as i32 + dir.vert.resolve(dist)) as u32, // this is horrible
