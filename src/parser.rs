@@ -37,6 +37,7 @@ pub struct CommandFSM {
     coords: Option<Result<Coords, CoordFSM>>,
     ctype: CommandType,
     color: Option<String>,
+    mods: Modifiers,
 }
 
 // impl Display for CommandFSM {
@@ -68,6 +69,7 @@ pub struct Command {
     coords: Coords,
     ctype: CommandType,
     color: Option<String>,
+    mods: Modifiers,
 }
 
 impl TryInto<Form> for CommandFSM {
@@ -96,11 +98,20 @@ impl From<CommandFSM> for Command {
             coords,
             ctype: value.ctype,
             color: value.color,
+            mods: value.mods,
         }
     }
 }
 
 impl Command {
+    pub fn new(ctype: CommandType, coords: Coords, color: Option<String>, mods: Modifiers) -> Self {
+        Self {
+            coords,
+            ctype,
+            color,
+            mods,
+        }
+    }
     pub fn ctype(&self) -> CommandType {
         self.ctype.clone()
     }
@@ -110,12 +121,59 @@ impl Command {
     pub fn color(&self) -> Option<String> {
         self.color.clone()
     }
+    pub fn mods(&self) -> &Modifiers {
+        &self.mods
+    }
 }
 
 pub enum FSMResult {
     OkCommand(Command),
     OkFSM(CommandFSM),
     Err(char),
+}
+
+pub enum ModifierType {
+    MoveCursor,
+    Collide,
+    CursorIsMiddle,
+}
+
+#[derive(Clone, Debug)]
+pub struct Modifiers(u8);
+
+impl Modifiers {
+    pub fn new() -> Self {
+        Modifiers(0)
+    }
+    fn set_internal(&mut self, i: u8, val: bool) {
+        if val {
+            self.0 |= 1 << i;
+        } else {
+            self.0 &= 255 ^ (1 << i);
+        }
+    }
+
+    fn get_internal(&self, i: u8) -> bool {
+        (self.0 >> i) & 1 == 1
+    }
+
+    pub fn move_cursor(&self) -> bool {
+        self.get_internal(0)
+    }
+    pub fn collide(&self) -> bool {
+        self.get_internal(1)
+    }
+    pub fn cursor_is_middle(&self) -> bool {
+        self.get_internal(2)
+    }
+
+    fn set(&mut self, mod_type: ModifierType) {
+        self.set_internal(mod_type as u8, true);
+    }
+
+    pub fn get(&self, mod_type: ModifierType) -> bool {
+        self.get_internal(mod_type as u8)
+    }
 }
 
 impl CommandFSM {
@@ -163,6 +221,7 @@ impl CommandFSM {
             coords,
             ctype,
             color: None,
+            mods: Modifiers::new(),
         })
     }
 
@@ -224,13 +283,32 @@ impl CommandFSM {
                                 coords: coords.clone(),
                                 ctype: self.ctype,
                                 color: None,
+                                mods: self.mods,
                             }),
                             c => {
                                 logging::error!("Not part of Circle Radius Syntax: {c}");
                                 Err(self)
                             }
                         },
-                        _ => unreachable!(),
+                        _ => {
+                            let mut mods = self.mods;
+
+                            match next_char {
+                                'm' => {
+                                    mods.set(ModifierType::CursorIsMiddle);
+                                }
+                                'c' => {
+                                    mods.set(ModifierType::Collide);
+                                }
+                                'o' => {
+                                    mods.set(ModifierType::MoveCursor);
+                                }
+                                _ => {
+                                    logging::error!("Invalid modifier key: {next_char}");
+                                }
+                            }
+                            Err(Self { mods, ..self })
+                        }
                     },
                     Err(fsm) => match fsm.clone().advance(next_char) {
                         Ok(coords) => match self.ctype {
@@ -593,6 +671,35 @@ fn short_distance(value: char) -> Result<u32, ()> {
     })
 }
 
+pub struct RawFormCoords {
+    start: (u32, u32), // (x, y)
+    end: (u32, u32),
+}
+
+impl RawFormCoords {
+    pub fn from_cursor(coords: &Coords) -> Self {
+        Self {
+            start: get_cursor_pos(),
+            end: coords.resolve(),
+        }
+    }
+
+    pub fn from_offset(offset: (u32, u32), coords: &Coords) -> Self {
+        Self {
+            start: offset,
+            end: coords.resolve_with_offset(offset.0, offset.1),
+        }
+    }
+
+    pub fn start(&self) -> (u32, u32) {
+        self.start
+    }
+
+    pub fn end(&self) -> (u32, u32) {
+        self.end
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Coords {
     AbsCoord(u32, u32),
@@ -617,6 +724,12 @@ impl Coords {
         match self {
             Coords::AbsCoord(x, y) => (*x, *y),
             Coords::RelCoord(fcp) => fcp.resolve_fcp(),
+        }
+    }
+    pub fn resolve_with_offset(&self, x: u32, y: u32) -> (u32, u32) {
+        match self {
+            Coords::AbsCoord(x, y) => (*x, *y),
+            Coords::RelCoord(fcp) => fcp.resolve_with_offset((x, y)),
         }
     }
 }
