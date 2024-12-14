@@ -22,4 +22,5 @@
 - [ ] modifiers
   - [ ] move cursor to other point after figure creation
   - [ ] "move until collide" second point is where it collides with another figure
-  - [ ] specify that cursor represents the middle of form, instead of upper left corner
+  - [ ] specify that cursor represents the middle of form, instead of upper left
+        corner
