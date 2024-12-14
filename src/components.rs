@@ -1,4 +1,5 @@
 use crate::graphics::{Group, TrueSignalClone};
+use crate::parser::Modifiers;
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
@@ -70,6 +71,19 @@ pub fn get_cursor_pos() -> (u32, u32) {
     ((cs.x)(), (cs.y)())
 }
 
+fn find_collision(vecx: i32, vecy: i32) -> u32 {
+    let mut min = u32::MAX;
+    let forms = use_context::<Forms>().unwrap().0;
+    let cursor_pos = get_cursor_pos();
+    forms().iter().for_each(|form| {
+        let collide_dist = form.find_collide(cursor_pos, vecx, vecy);
+        if collide_dist < min {
+            min = collide_dist;
+        }
+    });
+    min
+}
+
 fn parse_command(
     com: Command,
     set_forms: WriteSignal<Vec<Form>>,
@@ -88,6 +102,15 @@ fn parse_command(
             _ => todo!(),
         }
     } else {
+        let mut next_com = None;
+        if com.mods().move_cursor() {
+            next_com = Some(Command::new(
+                CommandType::Move,
+                com.coords(),
+                None,
+                Modifiers::new(),
+            ));
+        }
         let form = match com.ctype() {
             CommandType::Line => {
                 logging::log!("Creating a line...");
@@ -110,6 +133,10 @@ fn parse_command(
         if let Some(form) = form {
             set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
             set_forms.update(|vec| vec.push(form));
+        }
+
+        if let Some(com) = next_com {
+            parse_command(com, set_forms, set_overlays);
         }
     }
 }
@@ -152,6 +179,9 @@ pub struct OverlaysWS(pub WriteSignal<Vec<SelectableOverlayData>>);
 
 #[derive(Clone)]
 pub struct PreviewWS(pub WriteSignal<Option<Form>>);
+
+#[derive(Clone)]
+struct Forms(pub ReadSignal<Vec<Form>>);
 
 #[component]
 fn Reader() -> impl IntoView {
