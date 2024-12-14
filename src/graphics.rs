@@ -1,28 +1,16 @@
-use crate::components::get_cursor_pos;
-use crate::components::FormsWS;
-use crate::components::OverlaysWS;
-use crate::components::SelectMode;
-use crate::components::SelectState;
-use crate::components::SelectableOverlayData;
-use crate::parser::Coords;
-use leptos::use_context;
-use leptos::Signal;
-use leptos::SignalSet;
-use leptos::SignalUpdate;
+use crate::components::{
+    get_cursor_pos, FormsWS, OverlaysWS, SelectMode, SelectState, SelectableOverlayData,
+};
 use std::cell::RefCell;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::hash::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::fmt::{Display, Formatter};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
-use leptos::logging;
-use leptos::{view, RwSignal};
-use leptos::{window, IntoView};
+use leptos::{
+    logging, use_context, view, window, IntoView, RwSignal, Signal, SignalSet, SignalUpdate,
+};
 
-use crate::parser::Command;
-use crate::parser::CommandType;
+use crate::parser::{Command, CommandType, Coords};
 
 const LOREM_IPSUM: &str = "I'm such a silly boykisser";
 
@@ -57,6 +45,11 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.move_form(coords)),+
                 }
             }
+            fn find_collide(&self, start: (u32, u32), vecx: i32, vecy: i32) -> u32 {
+                match self {
+                    $(Self::$type(form) => form.find_collide(start, vecx, vecy)),+
+                }
+            }
         }
 
         impl IntoView for Form {
@@ -79,6 +72,7 @@ pub trait GraphicsItem: Clone + TrueSignalClone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
     fn move_form(&self, coords: &Coords);
+    fn find_collide(&self, start: (u32, u32), vecx: i32, vecy: i32) -> u32;
 }
 
 pub trait TrueSignalClone {
@@ -207,6 +201,17 @@ impl GraphicsItem for Line {
                 self.y2.set(p2.1);
             }
         }
+    }
+    fn find_collide(&self, start: (u32, u32), vecx: i32, vecy: i32) -> Option<u32> {
+        let lvecx = ((self.x2)() - (self.x1)()) as f32;
+        let lvecy = ((self.y2)() - (self.y1)()) as f32;
+        let len = ((lvecx * lvecx + lvecy * lvecy) as f32).sqrt();
+        let lvecxe = lvecx * (1. / len);
+        let lvecye = lvecy * (1. / len);
+
+        let better_res = ((self.x1)() as f32 - start.0 as f32 + (lvecx * len)) / vecx as f32;
+        let res = ((self.y1)() as f32 - start.1 as f32 + lvecy * len) / vecy as f32;
+        Some(res as u32)
     }
 }
 
