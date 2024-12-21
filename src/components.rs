@@ -20,7 +20,7 @@ use wasm_bindgen::JsValue;
 use crate::graphics::Circle;
 use crate::{
     graphics::{Form, GraphicsItem, Line, Rect, Text},
-    parser::{Command, CommandFSM, CommandType, Coords, Direction, FSMResult, RelCoordPair},
+    parser::{Command, CommandType, Coords, CreateComFSM, Direction, FSMResult, RelCoordPair},
 };
 
 // TOOD: refactor into separate files
@@ -107,7 +107,7 @@ fn parse_command(
                     form.1.move_form(&com.coords());
                 }
             }
-            _ => todo!(),
+            _ => unreachable!(),
         }
     } else {
         let mut next_com = None;
@@ -210,7 +210,7 @@ struct Forms(pub ReadSignal<Vec<Form>>);
 #[component]
 fn Reader() -> impl IntoView {
     let (com, set_com) = create_signal(String::new());
-    let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
+    let (fsm, set_fsm) = create_signal(Option::<CreateComFSM>::None);
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
     let (limbo, set_limbo) = create_signal(Option::<Form>::None);
     let (select_buffer, set_select_buffer) = create_signal(Vec::<(usize, Form)>::new());
@@ -394,7 +394,7 @@ fn Reader() -> impl IntoView {
                 set_com.update(|str| {
                     str.pop();
                 });
-                set_fsm(match CommandFSM::from(com()) {
+                set_fsm(match CreateComFSM::from(com()) {
                     FSMResult::OkCommand(com) => {
                         // this is technically unreachable
                         parse_command(com, set_forms, set_overlays);
@@ -447,15 +447,13 @@ fn Reader() -> impl IntoView {
                     }
                     Err(new_fsm) => set_fsm(Some(new_fsm)),
                 },
-                None => {
-                    set_fsm(Some(match CommandFSM::new(next_char) {
-                        Ok(fsm) => fsm,
-                        Err(err) => {
-                            logging::error!("Couldn't create CommandFSM, because this stoopid char snuck in: {err}");
-                            return;
-                        }
-                    }))
-                }
+                None => set_fsm(Some(match CommandFSM::new(next_char) {
+                    Ok(fsm) => fsm,
+                    Err(err) => {
+                        logging::error!("Couldn't create CreateComFSM, because this stoopid char snuck in: {err}");
+                        return;
+                    }
+                })),
             }
             update_preview(&fsm);
         }
@@ -746,7 +744,7 @@ pub fn Selectable(edit: ReadSignal<bool>, children: Children) -> impl IntoView {
 
 fn clear_select(
     set_com: WriteSignal<String>,
-    set_fsm: WriteSignal<Option<CommandFSM>>,
+    set_fsm: WriteSignal<Option<CreateComFSM>>,
     set_select_mode: WriteSignal<SelectState>,
     set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
     select_buffer: ReadSignal<Vec<(usize, Form)>>,
