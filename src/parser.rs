@@ -52,7 +52,7 @@ pub struct Command {
     mods: Modifiers,
 }
 
-impl TryInto<Form> for CommandFSM {
+impl TryInto<Form> for CreateComFSM {
     type Error = CommandType;
     fn try_into(self) -> Result<Form, Self::Error> {
         let com = Command::from(self);
