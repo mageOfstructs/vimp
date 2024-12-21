@@ -72,7 +72,7 @@ pub fn get_cursor_pos() -> (u32, u32) {
 }
 
 fn find_collision(vecx: f32, vecy: f32) -> (i32, i32) {
-    let mut min = u32::MAX;
+    let mut min = i32::MAX;
     let forms = use_context::<Forms>().unwrap().0;
     let cursor_pos = get_cursor_pos();
     forms().iter().for_each(|form| {
@@ -83,13 +83,14 @@ fn find_collision(vecx: f32, vecy: f32) -> (i32, i32) {
             min = collide_dist;
         }
     });
-    let min = min as i32; // FIXME: THIS IS FINE
+    logging::log!("Cur form creation vec: {vecx},{vecy}");
+    logging::log!("Min koef: {min}");
     logging::log!(
         "Computed vector (x,y): {},{}",
-        vecx as i32 * min,
-        vecy as i32 * min
+        vecx * min as f32,
+        vecy * min as f32
     );
-    (vecx as i32 * min, vecy as i32 * min)
+    ((vecx * min as f32) as i32, (vecy * min as f32) as i32)
 }
 
 fn parse_command(
@@ -112,16 +113,19 @@ fn parse_command(
     } else {
         let mut next_com = None;
         if com.mods().collide() {
-            let vec = com.coords().resolve();
+            let p1 = get_cursor_pos();
+            let p2 = com.coords().resolve();
+            let vec = (p2.0 as i32 - p1.0 as i32, p2.1 as i32 - p1.1 as i32);
+            logging::log!("Given vector: {},{}", vec.0, vec.1);
             let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1) as f32).sqrt();
             let (vecx, vecy) =
-                find_collision(vec.0 as f32 * unit_factor, vec.0 as f32 * unit_factor);
+                find_collision(vec.0 as f32 * unit_factor, vec.1 as f32 * unit_factor);
             let (x, y) = get_cursor_pos();
             let com = Command::new(
                 com.ctype(),
-                Coords::AbsCoord((x as i32 + vecx) as u32, (y as i32 + vecy) as u32),
+                Coords::AbsCoord((x as i32 + vecy) as u32, (y as i32 + vecx) as u32),
                 com.color(),
-                Modifiers::new(), // BUG: this removes makes it incompatible with
+                Modifiers::new(), // BUG: this makes it incompatible with
                                   // any other modifiers
             );
             parse_command(com, set_forms, set_overlays);
@@ -447,7 +451,7 @@ fn Reader() -> impl IntoView {
                     }
                     Err(new_fsm) => set_fsm(Some(new_fsm)),
                 },
-                None => set_fsm(Some(match CommandFSM::new(next_char) {
+                None => set_fsm(Some(match CreateComFSM::new(next_char) {
                     Ok(fsm) => fsm,
                     Err(err) => {
                         logging::error!("Couldn't create CreateComFSM, because this stoopid char snuck in: {err}");
@@ -488,7 +492,7 @@ fn Reader() -> impl IntoView {
     }
 }
 
-fn update_preview(fsm: &ReadSignal<Option<CommandFSM>>) {
+fn update_preview(fsm: &ReadSignal<Option<CreateComFSM>>) {
     let set_preview = use_context::<PreviewWS>().unwrap().0;
     if let Some(fsm) = fsm() {
         set_preview(match fsm.try_into() {

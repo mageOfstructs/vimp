@@ -45,7 +45,7 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.move_form(coords)),+
                 }
             }
-            fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<u32> {
+            fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
                 match self {
                     $(Self::$type(form) => form.find_collide(start, vecx, vecy)),+
                 }
@@ -72,7 +72,7 @@ pub trait GraphicsItem: Clone + TrueSignalClone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
     fn move_form(&self, coords: &Coords);
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<u32>;
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32>;
 }
 
 pub trait TrueSignalClone {
@@ -202,9 +202,9 @@ impl GraphicsItem for Line {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<u32> {
-        let lvecx = ((self.x2)() - (self.x1)()) as f32;
-        let lvecy = ((self.y2)() - (self.y1)()) as f32;
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
+        let lvecx = (self.x2)() as f32 - (self.x1)() as f32;
+        let lvecy = (self.y2)() as f32 - (self.y1)() as f32;
         if lvecx == 0. || lvecy == 0. {
             return None;
         }
@@ -214,11 +214,11 @@ impl GraphicsItem for Line {
         let lvecxe = lvecx * (1. / len);
         let lvecye = lvecy * (1. / len);
 
-        let better_res = ((self.x1)() as f32 - start.0 as f32 + (lvecx * len)) / vecx as f32;
-        let res = ((self.y1)() as f32 - start.1 as f32 + lvecy * len) / vecy as f32;
+        let better_res = ((self.x1)() as f32 - start.0 as f32 + (lvecxe * len)) / vecx as f32;
+        let res = ((self.y1)() as f32 - start.1 as f32 + lvecye * len) / vecy as f32;
         logging::log!("res: {res}");
         logging::log!("better_res: {res}");
-        Some(res as u32)
+        Some(res as i32)
     }
 }
 
@@ -313,7 +313,7 @@ impl GraphicsItem for Rect {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<u32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
         todo!()
     }
 }
@@ -408,7 +408,7 @@ impl GraphicsItem for Circle {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<u32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
         todo!()
     }
 }
@@ -447,7 +447,7 @@ impl GraphicsItem for Text {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<u32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
         todo!()
     }
 }
@@ -704,7 +704,7 @@ impl GraphicsItem for Group {
     fn get_overlay_dims(&self) -> SelectableOverlayData {
         SelectableOverlayData::new(self.top, self.left, self.width, self.height)
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<u32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
         None
         // self.forms
         //     .borrow()
