@@ -1,6 +1,8 @@
 [package]
 name = "vimp"
 version = "0.1.0"
+authors = ["Jason Puschnig (aka @mageOfStructs)"]
+license = "GPL-3.0-or-later"
 edition = "2021"
 
 [dependencies]
