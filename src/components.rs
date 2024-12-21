@@ -71,17 +71,25 @@ pub fn get_cursor_pos() -> (u32, u32) {
     ((cs.x)(), (cs.y)())
 }
 
-fn find_collision(vecx: i32, vecy: i32) -> u32 {
+fn find_collision(vecx: f32, vecy: f32) -> (i32, i32) {
     let mut min = u32::MAX;
     let forms = use_context::<Forms>().unwrap().0;
     let cursor_pos = get_cursor_pos();
     forms().iter().for_each(|form| {
         let collide_dist = form.find_collide(cursor_pos, vecx, vecy);
-        if collide_dist < min {
+        if let Some(collide_dist) = collide_dist
+            && collide_dist < min
+        {
             min = collide_dist;
         }
     });
-    min
+    let min = min as i32; // FIXME: THIS IS FINE
+    logging::log!(
+        "Computed vector (x,y): {},{}",
+        vecx as i32 * min,
+        vecy as i32 * min
+    );
+    (vecx as i32 * min, vecy as i32 * min)
 }
 
 fn parse_command(
@@ -103,6 +111,22 @@ fn parse_command(
         }
     } else {
         let mut next_com = None;
+        if com.mods().collide() {
+            let vec = com.coords().resolve();
+            let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1) as f32).sqrt();
+            let (vecx, vecy) =
+                find_collision(vec.0 as f32 * unit_factor, vec.0 as f32 * unit_factor);
+            let (x, y) = get_cursor_pos();
+            let com = Command::new(
+                com.ctype(),
+                Coords::AbsCoord((x as i32 + vecx) as u32, (y as i32 + vecy) as u32),
+                com.color(),
+                Modifiers::new(), // BUG: this removes makes it incompatible with
+                                  // any other modifiers
+            );
+            parse_command(com, set_forms, set_overlays);
+            return;
+        }
         if com.mods().move_cursor() {
             next_com = Some(Command::new(
                 CommandType::Move,
@@ -193,6 +217,7 @@ fn Reader() -> impl IntoView {
     let (select_mode, set_select_mode) = create_signal(SelectState::Off);
     let (overlays, set_overlays) = create_signal(Vec::<SelectableOverlayData>::new());
     let (preview, set_preview) = create_signal(Option::<Form>::None);
+    provide_context(Forms(forms));
     provide_context(overlays);
     provide_context(PreviewWS(set_preview));
     provide_context(SelectMode(select_mode));
