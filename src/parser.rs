@@ -225,6 +225,29 @@ impl CommandFSM {
         })
     }
 
+    fn parse_mods(&self, next_char: char) -> FSMResult {
+        let mut mods = self.mods.clone();
+
+        match next_char {
+            'm' => {
+                mods.set(ModifierType::CursorIsMiddle);
+            }
+            'c' => {
+                mods.set(ModifierType::Collide);
+            }
+            'o' => {
+                mods.set(ModifierType::MoveCursor);
+            }
+            _ => {
+                return FSMResult::Err(next_char);
+            }
+        }
+        FSMResult::OkFSM(Self {
+            mods,
+            ..self.clone()
+        })
+    }
+
     pub fn advance(mut self, next_char: char) -> Result<Command, Self> {
         if next_char == '\n' {
             return Ok(Command::from(self));
@@ -249,6 +272,12 @@ impl CommandFSM {
                 }
             };
         } else {
+            // FIXME: hotfix until I do it better
+            if let Some(Err(CoordFSM::Rel(RelCoord::Direction(_)))) = self.coords {
+                if let FSMResult::OkFSM(fsm) = self.parse_mods(next_char) {
+                    return Err(fsm);
+                }
+            }
             match self.coords {
                 None => match next_char {
                     '0'..='9' => Err(Self {
@@ -291,6 +320,7 @@ impl CommandFSM {
                             }
                         },
                         _ => {
+                            // FIXME: will never get executed
                             let mut mods = self.mods;
 
                             match next_char {
