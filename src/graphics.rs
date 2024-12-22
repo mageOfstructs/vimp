@@ -205,19 +205,13 @@ impl GraphicsItem for Line {
     fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
         let lvecx = (self.x2)() as f32 - (self.x1)() as f32;
         let lvecy = (self.y2)() as f32 - (self.y1)() as f32;
-        if lvecx == 0. || lvecy == 0. {
+
+        let dvx = vecx - lvecx;
+        let dvy = vecy - lvecy;
+        if dvy - dvx == 0. {
             return None;
         }
-        logging::log!("Line vector: {},{}", lvecx, lvecy);
-        let len = ((lvecx * lvecx + lvecy * lvecy) as f32).sqrt();
-        logging::log!("Line length: {}", len);
-        let lvecxe = lvecx * (1. / len);
-        let lvecye = lvecy * (1. / len);
-
-        let better_res = ((self.x1)() as f32 - start.0 as f32 + (lvecxe * len)) / vecx as f32;
-        let res = ((self.y1)() as f32 - start.1 as f32 + lvecye * len) / vecy as f32;
-        logging::log!("res: {res}");
-        logging::log!("better_res: {res}");
+        let res = (start.0 as f32 - start.1 as f32) / (dvy - dvx);
         Some(res as i32)
     }
 }

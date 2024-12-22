@@ -83,7 +83,7 @@ fn find_collision(vecx: f32, vecy: f32) -> (i32, i32) {
             min = collide_dist;
         }
     });
-    logging::log!("Cur form creation vec: {vecx},{vecy}");
+    // logging::log!("Cur form creation vec: {vecx},{vecy}");
     logging::log!("Min koef: {min}");
     logging::log!(
         "Computed vector (x,y): {},{}",
@@ -123,7 +123,7 @@ fn parse_command(
             let (x, y) = get_cursor_pos();
             let com = Command::new(
                 com.ctype(),
-                Coords::AbsCoord((x as i32 + vecy) as u32, (y as i32 + vecx) as u32),
+                Coords::AbsCoord((x as i32 + vecx) as u32, (y as i32 + vecy) as u32),
                 com.color(),
                 Modifiers::new(), // BUG: this makes it incompatible with
                                   // any other modifiers
@@ -417,6 +417,7 @@ fn Reader() -> impl IntoView {
                 set_overlays.update(|vec| {
                     vec.pop();
                 });
+                set_preview(None);
                 return;
             }
             "U" if fsm().is_none() => {
