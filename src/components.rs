@@ -93,8 +93,13 @@ fn find_collision(vecx: f32, vecy: f32) -> (i32, i32) {
     ((vecx * min as f32) as i32, (vecy * min as f32) as i32)
 }
 
+fn get_form_vector(p: (u32, u32)) -> (i32, i32) {
+    let p2 = get_cursor_pos();
+    (p.0 as i32 - p2.0 as i32, p.1 as i32 - p2.1 as i32)
+}
+
 fn parse_command(
-    com: Command,
+    mut com: Command,
     set_forms: WriteSignal<Vec<Form>>,
     set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
 ) {
@@ -113,9 +118,8 @@ fn parse_command(
     } else {
         let mut next_com = None;
         if com.mods().collide() {
-            let p1 = get_cursor_pos();
             let p2 = com.coords().resolve();
-            let vec = (p2.0 as i32 - p1.0 as i32, p2.1 as i32 - p1.1 as i32);
+            let vec = get_form_vector(p2);
             logging::log!("Given vector: {},{}", vec.0, vec.1);
             let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1) as f32).sqrt();
             let (vecx, vecy) =
@@ -123,10 +127,14 @@ fn parse_command(
             let (x, y) = get_cursor_pos();
             let com = Command::new(
                 com.ctype(),
+                None,
                 Coords::AbsCoord((x as i32 + vecx) as u32, (y as i32 + vecy) as u32),
                 com.color(),
-                Modifiers::new(), // BUG: this makes it incompatible with
-                                  // any other modifiers
+                Modifiers::new_with_state(
+                    com.mods().move_cursor(),
+                    false,
+                    com.mods().cursor_is_middle(),
+                ),
             );
             parse_command(com, set_forms, set_overlays);
             return;
@@ -134,10 +142,35 @@ fn parse_command(
         if com.mods().move_cursor() {
             next_com = Some(Command::new(
                 CommandType::Move,
+                None,
                 com.coords(),
                 None,
                 Modifiers::new(),
             ));
+        }
+        if com.mods().cursor_is_middle() {
+            let cursor_pos = get_cursor_pos();
+            let vec = get_form_vector(com.coords().resolve());
+            let start_coords = Coords::AbsCoord(
+                (cursor_pos.0 as i32 - vec.0) as u32,
+                (cursor_pos.1 as i32 - vec.1) as u32,
+            );
+            parse_command(
+                Command::new(
+                    com.ctype(),
+                    Some(start_coords),
+                    com.coords(),
+                    com.color(),
+                    Modifiers::new_with_state(
+                        com.mods().move_cursor(),
+                        com.mods().collide(),
+                        false,
+                    ),
+                ),
+                set_forms,
+                set_overlays,
+            );
+            return;
         }
         let form = match com.ctype() {
             CommandType::Line => {

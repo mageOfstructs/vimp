@@ -1,3 +1,4 @@
+use crate::parser::{short_distance, FastDirection};
 use leptos::logging;
 
 use super::get_cursor_pos;
@@ -69,22 +70,33 @@ impl Display for AbsCoord {
 }
 
 impl AbsCoord {
-    fn advance(self, next_char: char) -> Result<Coords, Self> {
+    fn advance(self, next_char: char) -> Result<Coords, CoordFSM> {
         match self {
             Self::EnteringFirstNum(num) => match next_char {
-                '0'..='9' => Err(Self::EnteringFirstNum(push_num(num, next_char))),
-                ';' => Err(Self::EnteringSecondNum(num, 0)),
+                '0'..='9' => Err(CoordFSM::Abs(Self::EnteringFirstNum(push_num(
+                    num, next_char,
+                )))),
+                ';' => Err(CoordFSM::Abs(Self::EnteringSecondNum(num, 0))),
+                _ if short_distance(next_char).is_ok() => {
+                    Err(CoordFSM::Rel(RelCoord::EnteringDistance(
+                        FastDirection::try_from('a').unwrap(),
+                        short_distance(next_char).unwrap(),
+                    )))
+                }
                 _ => {
                     logging::error!("Not part of AbsCoord Syntax (first num): {next_char}");
-                    Err(self)
+                    Err(CoordFSM::Abs(self))
                 }
             },
             Self::EnteringSecondNum(num1, num) => match next_char {
-                '0'..='9' => Err(Self::EnteringSecondNum(num1, push_num(num, next_char))),
+                '0'..='9' => Err(CoordFSM::Abs(Self::EnteringSecondNum(
+                    num1,
+                    push_num(num, next_char),
+                ))),
                 ';' => Ok(Coords::AbsCoord(num1, num)),
                 _ => {
                     logging::error!("Not part of AbsCoord Syntax (second num): {next_char}");
-                    Err(self)
+                    Err(CoordFSM::Abs(self))
                 }
             },
         }
@@ -115,7 +127,7 @@ impl CoordFSM {
         match self {
             Self::Abs(absc) => match absc.advance(next_char) {
                 Ok(coords) => Ok(coords),
-                Err(next_state) => Err(Self::Abs(next_state)),
+                Err(next_state) => Err(next_state),
             },
             Self::Rel(relc) => match relc.advance(next_char) {
                 Ok(coords) => Ok(Coords::RelCoord(coords)),

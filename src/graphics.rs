@@ -500,7 +500,7 @@ impl TryFrom<Command> for Line {
     type Error = CommandType;
     fn try_from(value: Command) -> Result<Self, Self::Error> {
         if let CommandType::Line = value.ctype() {
-            let ((x, y), (x2, y2)) = (get_cursor_pos(), value.coords().resolve());
+            let ((x, y), (x2, y2)) = (value.start_coords(), value.coords().resolve());
             let color = value.color().unwrap_or("red".to_string());
             Ok(Line {
                 x1: RwSignal::new(x),
@@ -520,7 +520,7 @@ impl TryFrom<Command> for Rect {
     fn try_from(command: Command) -> Result<Self, Self::Error> {
         if let CommandType::Rectangle = command.ctype() {
             let color = command.color().unwrap_or("red".to_string());
-            let ((mut x, mut y), (x2, y2)) = (get_cursor_pos(), command.coords().resolve());
+            let ((mut x, mut y), (x2, y2)) = (command.start_coords(), command.coords().resolve());
             let mut width: i32 = x2 as i32 - x as i32;
             let mut height = y2 as i32 - y as i32;
             if width < 0 {

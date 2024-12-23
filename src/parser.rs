@@ -46,6 +46,7 @@ pub struct CreateComFSM {
 
 #[derive(Debug, Clone)]
 pub struct Command {
+    start_coords: Option<Coords>,
     coords: Coords,
     ctype: CommandType,
     color: Option<String>,
@@ -84,6 +85,7 @@ impl From<CreateComFSM> for Command {
             }
         };
         Self {
+            start_coords: None,
             coords,
             ctype: value.ctype,
             color: value.color,
@@ -93,8 +95,15 @@ impl From<CreateComFSM> for Command {
 }
 
 impl Command {
-    pub fn new(ctype: CommandType, coords: Coords, color: Option<String>, mods: Modifiers) -> Self {
+    pub fn new(
+        ctype: CommandType,
+        start_coords: Option<Coords>,
+        coords: Coords,
+        color: Option<String>,
+        mods: Modifiers,
+    ) -> Self {
         Self {
+            start_coords,
             coords,
             ctype,
             color,
@@ -112,6 +121,12 @@ impl Command {
     }
     pub fn mods(&self) -> &Modifiers {
         &self.mods
+    }
+    pub fn start_coords(&self) -> (u32, u32) {
+        match &self.start_coords {
+            None => get_cursor_pos(),
+            Some(c) => c.resolve(),
+        }
     }
 }
 
@@ -133,6 +148,19 @@ pub struct Modifiers(u8);
 impl Modifiers {
     pub fn new() -> Self {
         Modifiers(0)
+    }
+    pub fn new_with_state(move_cursor: bool, collided: bool, cis_middle: bool) -> Self {
+        let mut state = 0;
+        if move_cursor {
+            state |= 1;
+        }
+        if collided {
+            state |= 2;
+        }
+        if cis_middle {
+            state |= 4;
+        }
+        Modifiers(state)
     }
     fn set_internal(&mut self, i: u8, val: bool) {
         if val {
@@ -298,6 +326,7 @@ impl CreateComFSM {
                                 ..self
                             }),
                             ';' => Ok(Command {
+                                start_coords: None,
                                 coords: coords.clone(),
                                 ctype: self.ctype,
                                 color: None,

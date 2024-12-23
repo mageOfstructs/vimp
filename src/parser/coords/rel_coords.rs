@@ -36,6 +36,10 @@ impl RelCoord {
                     num,
                     next_char.into(),
                 ))),
+                _ if short_distance(next_char).is_ok() => Err(Self::EnteringDistance(
+                    FastDirection::try_from('a').unwrap(),
+                    short_distance(next_char).unwrap(),
+                )),
                 _ => {
                     logging::error!("Not part of RelCoord Syntax (first num): {next_char}");
                     Err(self)
