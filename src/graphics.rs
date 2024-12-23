@@ -1,6 +1,4 @@
-use crate::components::{
-    get_cursor_pos, FormsWS, OverlaysWS, SelectMode, SelectState, SelectableOverlayData,
-};
+use crate::components::{FormsWS, OverlaysWS, SelectMode, SelectState, SelectableOverlayData};
 use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -45,7 +43,7 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.move_form(coords)),+
                 }
             }
-            fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
+            fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
                 match self {
                     $(Self::$type(form) => form.find_collide(start, vecx, vecy)),+
                 }
@@ -72,7 +70,7 @@ pub trait GraphicsItem: Clone + TrueSignalClone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
     fn move_form(&self, coords: &Coords);
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32>;
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32>;
 }
 
 pub trait TrueSignalClone {
@@ -202,18 +200,41 @@ impl GraphicsItem for Line {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
         let lvecx = (self.x2)() as f32 - (self.x1)() as f32;
         let lvecy = (self.y2)() as f32 - (self.y1)() as f32;
 
-        let dvx = vecx - lvecx;
-        let dvy = vecy - lvecy;
-        if dvy - dvx == 0. {
-            return None;
-        }
-        let res = (start.0 as f32 - start.1 as f32) / (dvy - dvx);
-        Some(res as i32)
+        get_intersect_of_two_lines(
+            (lvecx, lvecy),
+            VectorFn {
+                start: (start.0 as f32, start.1 as f32),
+                x: vecx,
+                y: vecy,
+            },
+        )
+        // let dvx = vecx - lvecx;
+        // let dvy = vecy - lvecy;
+        // if dvy - dvx == 0. {
+        //     return None;
+        // }
+        // let res = (start.0 as f32 - start.1 as f32) / (dvy - dvx);
+        // Some(res)
     }
+}
+
+pub struct VectorFn {
+    pub start: (f32, f32),
+    pub x: f32,
+    pub y: f32,
+}
+pub fn get_intersect_of_two_lines(vec1: (f32, f32), vec2: VectorFn) -> Option<f32> {
+    let dvx = vec2.x - vec1.0;
+    let dvy = vec2.y - vec1.1;
+    if dvy - dvx == 0. {
+        return None;
+    }
+    let res = (vec2.start.0 as f32 - vec2.start.1 as f32) / (dvy - dvx);
+    Some(res)
 }
 
 #[derive(Clone, Debug)]
@@ -307,7 +328,7 @@ impl GraphicsItem for Rect {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
         todo!()
     }
 }
@@ -402,7 +423,7 @@ impl GraphicsItem for Circle {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
         todo!()
     }
 }
@@ -441,7 +462,7 @@ impl GraphicsItem for Text {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
         todo!()
     }
 }
@@ -698,7 +719,7 @@ impl GraphicsItem for Group {
     fn get_overlay_dims(&self) -> SelectableOverlayData {
         SelectableOverlayData::new(self.top, self.left, self.width, self.height)
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<i32> {
+    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
         None
         // self.forms
         //     .borrow()

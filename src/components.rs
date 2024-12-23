@@ -72,25 +72,22 @@ pub fn get_cursor_pos() -> (u32, u32) {
 }
 
 fn find_collision(vecx: f32, vecy: f32) -> (i32, i32) {
-    let mut min = i32::MAX;
+    let mut min = f32::MAX; // FIXME: bad default; fix when rectangle collision is done
     let forms = use_context::<Forms>().unwrap().0;
     let cursor_pos = get_cursor_pos();
     forms().iter().for_each(|form| {
         let collide_dist = form.find_collide(cursor_pos, vecx, vecy);
         if let Some(collide_dist) = collide_dist
             && collide_dist < min
+            && collide_dist >= 0.
         {
             min = collide_dist;
         }
     });
     // logging::log!("Cur form creation vec: {vecx},{vecy}");
     logging::log!("Min koef: {min}");
-    logging::log!(
-        "Computed vector (x,y): {},{}",
-        vecx * min as f32,
-        vecy * min as f32
-    );
-    ((vecx * min as f32) as i32, (vecy * min as f32) as i32)
+    logging::log!("Computed vector (x,y): {},{}", vecx * min, vecy * min);
+    ((vecx * min) as i32, (vecy * min) as i32)
 }
 
 fn get_form_vector(p: (u32, u32)) -> (i32, i32) {
@@ -99,7 +96,7 @@ fn get_form_vector(p: (u32, u32)) -> (i32, i32) {
 }
 
 fn parse_command(
-    mut com: Command,
+    com: Command,
     set_forms: WriteSignal<Vec<Form>>,
     set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
 ) {
