@@ -3,6 +3,7 @@ use leptos::logging;
 
 use super::get_cursor_pos;
 use super::push_num;
+use super::ModifierType;
 use std::fmt::{Debug, Display, Formatter};
 
 mod rel_coords;
@@ -77,10 +78,12 @@ impl AbsCoord {
                     num, next_char,
                 )))),
                 ';' => Err(CoordFSM::Abs(Self::EnteringSecondNum(num, 0))),
-                _ if short_distance(next_char).is_ok() => {
+                _ if short_distance(next_char).is_ok()
+                    || ModifierType::try_from(next_char).is_ok() =>
+                {
                     Err(CoordFSM::Rel(RelCoord::EnteringDistance(
                         FastDirection::try_from('a').unwrap(),
-                        short_distance(next_char).unwrap(),
+                        short_distance(next_char).unwrap_or(5),
                     )))
                 }
                 _ => {

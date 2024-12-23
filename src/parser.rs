@@ -145,21 +145,26 @@ pub enum ModifierType {
 #[derive(Clone, Debug)]
 pub struct Modifiers(u8);
 
+impl TryFrom<char> for ModifierType {
+    type Error = char;
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        Ok(match value {
+            'm' => ModifierType::CursorIsMiddle,
+            'c' => ModifierType::Collide,
+            'o' => ModifierType::MoveCursor,
+            _ => {
+                return Err(value);
+            }
+        })
+    }
+}
+
 impl Modifiers {
     pub fn new() -> Self {
         Modifiers(0)
     }
     pub fn new_with_state(move_cursor: bool, collided: bool, cis_middle: bool) -> Self {
-        let mut state = 0;
-        if move_cursor {
-            state |= 1;
-        }
-        if collided {
-            state |= 2;
-        }
-        if cis_middle {
-            state |= 4;
-        }
+        let state = move_cursor as u8 | (collided as u8) << 1 | (cis_middle as u8) << 2;
         Modifiers(state)
     }
     fn set_internal(&mut self, i: u8, val: bool) {
@@ -242,27 +247,22 @@ impl CreateComFSM {
         })
     }
 
-    fn parse_mods(&self, next_char: char) -> FSMResult {
-        let mut mods = self.mods.clone();
-
+    fn parse_mods(&mut self, next_char: char) -> FSMResult {
         match next_char {
             'm' => {
-                mods.set(ModifierType::CursorIsMiddle);
+                self.mods.set(ModifierType::CursorIsMiddle);
             }
             'c' => {
-                mods.set(ModifierType::Collide);
+                self.mods.set(ModifierType::Collide);
             }
             'o' => {
-                mods.set(ModifierType::MoveCursor);
+                self.mods.set(ModifierType::MoveCursor);
             }
             _ => {
                 return FSMResult::Err(next_char);
             }
         }
-        FSMResult::OkFSM(Self {
-            mods,
-            ..self.clone()
-        })
+        FSMResult::OkFSM(Self { ..self.clone() })
     }
 
     pub fn advance(mut self, next_char: char) -> Result<Command, Self> {
@@ -295,6 +295,14 @@ impl CreateComFSM {
                     return Err(fsm);
                 }
             }
+            if let Some(Err(CoordFSM::Abs(AbsCoord::EnteringFirstNum(_)))) = self.coords {
+                logging::log!("Parsing mods, even though this feels sketchy");
+                if let FSMResult::OkFSM(fsm) = self.parse_mods(next_char) {
+                    logging::log!("{:?}", self.mods);
+                    // return Err(fsm);
+                }
+            }
+
             match self.coords {
                 None => match next_char {
                     '0'..='9' => Err(Self {
