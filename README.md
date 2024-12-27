@@ -19,6 +19,10 @@
 - "Easy" Command Syntax (to those already familiar with Vim)
 - Renders images using SVG (which is cool afaik)
 
+## Compilation
+- It's all csr for now, so ``trunk serve`` will do
+- [Live Demo](https://mageofstructs.github.io/vimp) (prob outdated)
+
 ## ![Commands](./Commands.md)
 
 ## ![Future Goals](./Goals.md)
