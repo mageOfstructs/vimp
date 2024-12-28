@@ -83,14 +83,16 @@ impl RelCoord {
             Self::Direction(ref dir) => match short_distance(next_char) {
                 Ok(dist) => Err(Self::EnteringDistance(dir.clone(), dist)),
                 Err(_) => {
-                    logging::error!("Not part of short distance syntax: {next_char}");
+                    logging::error!("Not part of short distance syntax (Direction): {next_char}");
                     Err(self)
                 }
             },
             Self::EnteringDistance(ref dir, cur_dist) => match short_distance(next_char) {
                 Ok(dist) => Err(Self::EnteringDistance(dir.clone(), cur_dist + dist)),
                 Err(_) => {
-                    logging::error!("Not part of short distance syntax: {next_char}");
+                    logging::error!(
+                        "Not part of short distance syntax (EnteringDistance): {next_char}"
+                    );
                     Err(self)
                 }
             },
