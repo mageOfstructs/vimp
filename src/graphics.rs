@@ -1,5 +1,6 @@
 use crate::components::{FormsWS, OverlaysWS, SelectMode, SelectState, SelectableOverlayData};
 use std::cell::RefCell;
+use std::cmp::min;
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
@@ -381,7 +382,20 @@ impl GraphicsItem for Rect {
         }
     }
     fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
-        todo!()
+        let x = (self.x)();
+        let y = (self.y)();
+        let width = (self.width)();
+        let height = (self.height)();
+        let mut answers: [Option<f32>; 4] = [None; 4];
+        answers[0] = veceq.intersect(&VectorEq::from((x, y), (x + width, y)));
+        answers[1] = veceq.intersect(&VectorEq::from((x, y + height), (x + width, y + height)));
+        answers[2] = veceq.intersect(&VectorEq::from((x, y), (x, y + height)));
+        answers[3] = veceq.intersect(&VectorEq::from((x + width, y), (x + width, y + height)));
+        answers
+            .iter()
+            .map(|el| el.unwrap_or(f32::MAX))
+            .map(|el| if el.is_infinite() { f32::MAX } else { el })
+            .reduce(|acc, e| if acc < e { acc } else { e })
     }
 }
 
