@@ -43,9 +43,9 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.move_form(coords)),+
                 }
             }
-            fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
+            fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
                 match self {
-                    $(Self::$type(form) => form.find_collide(start, vecx, vecy)),+
+                    $(Self::$type(form) => form.find_collide(veceq)),+
                 }
             }
         }
@@ -70,7 +70,7 @@ pub trait GraphicsItem: Clone + TrueSignalClone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
     fn move_form(&self, coords: &Coords);
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32>;
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32>;
 }
 
 pub trait TrueSignalClone {
@@ -200,25 +200,77 @@ impl GraphicsItem for Line {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
-        let lvecx = (self.x2)() as f32 - (self.x1)() as f32;
-        let lvecy = (self.y2)() as f32 - (self.y1)() as f32;
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
+        veceq.intersect(&VectorEq::from(
+            ((self.x1)(), (self.y1)()),
+            ((self.x2)(), (self.y2)()),
+        ))
+    }
+}
 
-        get_intersect_of_two_lines(
-            (lvecx, lvecy),
-            VectorFn {
-                start: (start.0 as f32, start.1 as f32),
-                x: vecx,
-                y: vecy,
-            },
-        )
-        // let dvx = vecx - lvecx;
-        // let dvy = vecy - lvecy;
-        // if dvy - dvx == 0. {
+#[derive(Debug)]
+pub struct VectorEq {
+    pub start: (f32, f32),
+    pub vec: (f32, f32),
+    pub end: (f32, f32),
+}
+
+impl VectorEq {
+    pub fn from(p1: (u32, u32), p2: (u32, u32)) -> Self {
+        let x1 = p1.0 as f32;
+        let x2 = p2.0 as f32;
+        let y1 = p1.1 as f32;
+        let y2 = p2.1 as f32;
+        let vec = (x2 - x1, y2 - y1);
+        // let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1).sqrt());
+        Self {
+            start: (x1, y1),
+            vec,
+            // vec: (vec.0 * unit_factor, vec.1 * unit_factor),
+            end: (x2, y2),
+        }
+    }
+
+    // TODO: change to private later
+    /// returns the koefficient needed for self.resolve() to produce the intersection point
+    pub fn intersect(&self, ve2: &VectorEq) -> Option<f32> {
+        logging::log!("1: {self:?}");
+        logging::log!("2: {ve2:?}");
+        let ret = ((self.start.1 - ve2.start.1) * ve2.vec.0
+            - ve2.vec.1 * (self.start.0 - ve2.start.0))
+            / (ve2.vec.1 * self.vec.0 - self.vec.1 * ve2.vec.0);
+        let other_k = (self.start.0 - ve2.start.0 + self.vec.0 * ret) / ve2.vec.0;
+        let point = ve2.resolve(other_k);
+        let same_point = self.resolve(ret);
+        logging::log!("{same_point:?}");
+        // check if intersect is out of bounce
+        if (ve2.vec.0 < 0. && point.0 < ve2.end.0 as u32
+            || ve2.vec.0 > 0. && point.0 > ve2.end.0 as u32)
+            || (ve2.vec.1 < 0. && point.1 < ve2.end.1 as u32
+                || ve2.vec.1 > 0. && point.1 > ve2.end.1 as u32)
+        {
+            return None;
+        }
+        logging::log!("new k={ret}");
+        Some(ret)
+        // if (ve2.vec.1 - self.vec.1) == 0. || self.vec.0 == 0. {
         //     return None;
         // }
-        // let res = (start.0 as f32 - start.1 as f32) / (dvy - dvx);
-        // Some(res)
+        // let k = (self.start.1 - ve2.start.1) / ve2.vec.0;
+        // logging::log!("constant: {k}");
+        // Some((k / (ve2.vec.1 - self.vec.1) - (self.start.0 - ve2.start.0)) / self.vec.0)
+    }
+    pub fn resolve(&self, k: f32) -> (u32, u32) {
+        logging::log!("k: {k}");
+        logging::log!(
+            "Point: ({}, {})",
+            (self.start.0 + self.vec.0 * k),
+            (self.start.1 + self.vec.1 * k)
+        );
+        (
+            (self.start.0 + self.vec.0 * k) as u32,
+            (self.start.1 + self.vec.1 * k) as u32,
+        )
     }
 }
 
@@ -328,7 +380,7 @@ impl GraphicsItem for Rect {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
         todo!()
     }
 }
@@ -423,7 +475,7 @@ impl GraphicsItem for Circle {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
         todo!()
     }
 }
@@ -462,7 +514,7 @@ impl GraphicsItem for Text {
             }
         }
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
         todo!()
     }
 }
@@ -719,13 +771,8 @@ impl GraphicsItem for Group {
     fn get_overlay_dims(&self) -> SelectableOverlayData {
         SelectableOverlayData::new(self.top, self.left, self.width, self.height)
     }
-    fn find_collide(&self, start: (u32, u32), vecx: f32, vecy: f32) -> Option<f32> {
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
         None
-        // self.forms
-        //     .borrow()
-        //     .iter()
-        //     .map(|form| form.find_collide(start, vecx, vecy))
-        //     .min()?
     }
 }
 

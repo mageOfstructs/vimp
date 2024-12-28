@@ -1,4 +1,4 @@
-use crate::graphics::{Group, TrueSignalClone};
+use crate::graphics::{Group, TrueSignalClone, VectorEq};
 use crate::parser::Modifiers;
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
@@ -71,25 +71,6 @@ pub fn get_cursor_pos() -> (u32, u32) {
     ((cs.x)(), (cs.y)())
 }
 
-fn find_collision(vecx: f32, vecy: f32) -> (i32, i32) {
-    let mut min = f32::MAX; // FIXME: bad default; fix when rectangle collision is done
-    let forms = use_context::<Forms>().unwrap().0;
-    let cursor_pos = get_cursor_pos();
-    forms().iter().for_each(|form| {
-        let collide_dist = form.find_collide(cursor_pos, vecx, vecy);
-        if let Some(collide_dist) = collide_dist
-            && collide_dist < min
-            && collide_dist >= 0.
-        {
-            min = collide_dist;
-        }
-    });
-    // logging::log!("Cur form creation vec: {vecx},{vecy}");
-    logging::log!("Min koef: {min}");
-    logging::log!("Computed vector (x,y): {},{}", vecx * min, vecy * min);
-    ((vecx * min) as i32, (vecy * min) as i32)
-}
-
 fn get_form_vector(p: (u32, u32)) -> (i32, i32) {
     let p2 = get_cursor_pos();
     (p.0 as i32 - p2.0 as i32, p.1 as i32 - p2.1 as i32)
@@ -115,17 +96,29 @@ fn parse_command(
     } else {
         let mut next_com = None;
         if com.mods().collide() {
+            let p1 = get_cursor_pos();
             let p2 = com.coords().resolve();
-            let vec = get_form_vector(p2);
-            logging::log!("Given vector: {},{}", vec.0, vec.1);
-            let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1) as f32).sqrt();
-            let (vecx, vecy) =
-                find_collision(vec.0 as f32 * unit_factor, vec.1 as f32 * unit_factor);
-            let (x, y) = get_cursor_pos();
+
+            let veceq = VectorEq::from(p1, p2);
+            logging::log!("Veceq: {veceq:?}");
+            let forms = use_context::<Forms>().unwrap().0;
+            let mut min = f32::MAX;
+            for form in forms() {
+                if let Some(dist) = form.find_collide(&veceq) {
+                    if dist < min && dist >= 0. {
+                        logging::log!("new min={dist}");
+                        min = dist
+                    }
+                }
+            }
+
+            logging::log!("Calculating final point now...k={min}");
+            let (x, y) = veceq.resolve(min);
             let com = Command::new(
                 com.ctype(),
                 None,
-                Coords::AbsCoord((x as i32 + vecx) as u32, (y as i32 + vecy) as u32),
+                Coords::AbsCoord(x, y),
+                // Coords::AbsCoord((x as i32 + vecx) as u32, (y as i32 + vecy) as u32),
                 com.color(),
                 Modifiers::new_with_state(
                     com.mods().move_cursor(),
