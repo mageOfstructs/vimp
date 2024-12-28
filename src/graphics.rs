@@ -223,11 +223,11 @@ impl VectorEq {
         let y1 = p1.1 as f32;
         let y2 = p2.1 as f32;
         let vec = (x2 - x1, y2 - y1);
-        // let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1).sqrt());
+        let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1).sqrt());
         Self {
             start: (x1, y1),
-            vec,
-            // vec: (vec.0 * unit_factor, vec.1 * unit_factor),
+            // vec,
+            vec: (vec.0 * unit_factor, vec.1 * unit_factor),
             end: (x2, y2),
         }
     }
@@ -272,6 +272,15 @@ impl VectorEq {
             (self.start.0 + self.vec.0 * k) as u32,
             (self.start.1 + self.vec.1 * k) as u32,
         )
+    }
+
+    fn len(&self) -> f32 {
+        (self.vec.0 * self.vec.0 + self.vec.1 * self.vec.1).sqrt()
+    }
+    fn angle(&self, ve2: &VectorEq) -> f32 {
+        let vec1 = self.vec;
+        let vec2 = ve2.vec;
+        ((vec1.0 * vec2.0 + vec1.1 * vec2.1) / (self.len() * ve2.len())).acos()
     }
 }
 
@@ -490,7 +499,27 @@ impl GraphicsItem for Circle {
         }
     }
     fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
-        todo!()
+        let x = (self.x)() as f32;
+        let y = (self.y)() as f32;
+        let r = (self.radius)() as f32;
+        let a = (veceq.start.0 - x, veceq.start.1 - y);
+        let dot = a.0 * veceq.vec.0 + a.1 * veceq.vec.1;
+        let a2 = a.0 * a.0 + a.1 * a.1;
+        let d = dot * dot - a2 + r * r;
+        let l1 = -dot + d.sqrt();
+        let l2 = -dot - d.sqrt();
+        logging::log!("l1: {l1}, l2: {l2}");
+        Some(if l1 >= 0. && l2 >= 0. {
+            if l1 < l2 {
+                l1
+            } else {
+                l2
+            }
+        } else if l1 >= 0. {
+            l1
+        } else {
+            l2
+        })
     }
 }
 
