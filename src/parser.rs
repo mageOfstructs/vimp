@@ -290,7 +290,7 @@ impl CreateComFSM {
             };
         } else {
             // FIXME: hotfix until I do it better
-            if let Some(Err(CoordFSM::Rel(RelCoord::Direction(_)))) = self.coords {
+            if let Some(Err(CoordFSM::Rel(_))) = self.coords {
                 if let FSMResult::OkFSM(fsm) = self.parse_mods(next_char) {
                     return Err(fsm);
                 }
