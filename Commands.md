@@ -69,3 +69,12 @@ y x c
   - multiple letters will be summed (no weird subtraction rules here)
 
 - TODO: rewrite docs for fcs (will never get done)
+
+## Modifiers
+
+- single-char sub-commands that you put at the end of your command
+- should work with the fast coord system
+- ``m``: "cursor is **m**iddle" treat cursor pos as the middle of the form, instead as the top-left corner
+- ``o``: "m**o**ve cursor", move cursor to second point after form creation
+- ``c``: "collide", checks with which already existing form the currently being created form would first "collide" and set the second point to the intersection
+  - if there aren't any intersections, the second point will be on one of the borders
