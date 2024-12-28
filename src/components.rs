@@ -105,7 +105,7 @@ fn parse_command(
             let mut min = f32::MAX;
             for form in forms() {
                 if let Some(dist) = form.find_collide(&veceq) {
-                    if dist < min && dist.is_finite() && dist >= 0. {
+                    if dist < min && dist.is_finite() && dist > 0. {
                         logging::log!("new min={dist}");
                         min = dist
                     }
