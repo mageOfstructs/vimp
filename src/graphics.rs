@@ -557,8 +557,8 @@ impl GraphicsItem for Text {
             }
         }
     }
-    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
-        todo!()
+    fn find_collide(&self, _veceq: &VectorEq) -> Option<f32> {
+        None
     }
 }
 
@@ -814,7 +814,7 @@ impl GraphicsItem for Group {
     fn get_overlay_dims(&self) -> SelectableOverlayData {
         SelectableOverlayData::new(self.top, self.left, self.width, self.height)
     }
-    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
+    fn find_collide(&self, _veceq: &VectorEq) -> Option<f32> {
         None
     }
 }
