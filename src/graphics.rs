@@ -1,28 +1,15 @@
-use crate::components::get_cursor_pos;
-use crate::components::FormsWS;
-use crate::components::OverlaysWS;
-use crate::components::SelectMode;
-use crate::components::SelectState;
-use crate::components::SelectableOverlayData;
-use crate::parser::Coords;
-use leptos::use_context;
-use leptos::Signal;
-use leptos::SignalSet;
-use leptos::SignalUpdate;
+use crate::components::{FormsWS, OverlaysWS, SelectMode, SelectState, SelectableOverlayData};
 use std::cell::RefCell;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::hash::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::cmp::min;
+use std::fmt::{Display, Formatter};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
-use leptos::logging;
-use leptos::{view, RwSignal};
-use leptos::{window, IntoView};
+use leptos::{
+    logging, use_context, view, window, IntoView, RwSignal, Signal, SignalSet, SignalUpdate,
+};
 
-use crate::parser::Command;
-use crate::parser::CommandType;
+use crate::parser::{Command, CommandType, Coords};
 
 const LOREM_IPSUM: &str = "I'm such a silly boykisser";
 
@@ -57,6 +44,11 @@ macro_rules! gen_form {
                     $(Self::$type(form) => form.move_form(coords)),+
                 }
             }
+            fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
+                match self {
+                    $(Self::$type(form) => form.find_collide(veceq)),+
+                }
+            }
         }
 
         impl IntoView for Form {
@@ -79,6 +71,7 @@ pub trait GraphicsItem: Clone + TrueSignalClone {
     fn key(&self) -> u128;
     fn get_overlay_dims(&self) -> SelectableOverlayData;
     fn move_form(&self, coords: &Coords);
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32>;
 }
 
 pub trait TrueSignalClone {
@@ -208,6 +201,102 @@ impl GraphicsItem for Line {
             }
         }
     }
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
+        veceq.intersect(&VectorEq::from(
+            ((self.x1)(), (self.y1)()),
+            ((self.x2)(), (self.y2)()),
+        ))
+    }
+}
+
+#[derive(Debug)]
+pub struct VectorEq {
+    pub start: (f32, f32),
+    pub vec: (f32, f32),
+    pub end: (f32, f32),
+}
+
+impl VectorEq {
+    pub fn from(p1: (u32, u32), p2: (u32, u32)) -> Self {
+        let x1 = p1.0 as f32;
+        let x2 = p2.0 as f32;
+        let y1 = p1.1 as f32;
+        let y2 = p2.1 as f32;
+        let vec = (x2 - x1, y2 - y1);
+        let unit_factor = 1. / ((vec.0 * vec.0 + vec.1 * vec.1).sqrt());
+        Self {
+            start: (x1, y1),
+            // vec,
+            vec: (vec.0 * unit_factor, vec.1 * unit_factor),
+            end: (x2, y2),
+        }
+    }
+
+    // TODO: change to private later
+    /// returns the koefficient needed for self.resolve() to produce the intersection point
+    pub fn intersect(&self, ve2: &VectorEq) -> Option<f32> {
+        logging::log!("1: {self:?}");
+        logging::log!("2: {ve2:?}");
+        let ret = ((self.start.1 - ve2.start.1) * ve2.vec.0
+            - ve2.vec.1 * (self.start.0 - ve2.start.0))
+            / (ve2.vec.1 * self.vec.0 - self.vec.1 * ve2.vec.0);
+        let other_k = (self.start.0 - ve2.start.0 + self.vec.0 * ret) / ve2.vec.0;
+        let point = ve2.resolve(other_k);
+        let same_point = self.resolve(ret);
+        logging::log!("{same_point:?}");
+        // check if intersect is out of bounce
+        if (ve2.vec.0 < 0. && point.0 < ve2.end.0 as u32
+            || ve2.vec.0 > 0. && point.0 > ve2.end.0 as u32)
+            || (ve2.vec.1 < 0. && point.1 < ve2.end.1 as u32
+                || ve2.vec.1 > 0. && point.1 > ve2.end.1 as u32)
+        {
+            return None;
+        }
+        logging::log!("new k={ret}");
+        Some(ret)
+        // if (ve2.vec.1 - self.vec.1) == 0. || self.vec.0 == 0. {
+        //     return None;
+        // }
+        // let k = (self.start.1 - ve2.start.1) / ve2.vec.0;
+        // logging::log!("constant: {k}");
+        // Some((k / (ve2.vec.1 - self.vec.1) - (self.start.0 - ve2.start.0)) / self.vec.0)
+    }
+    pub fn resolve(&self, k: f32) -> (u32, u32) {
+        logging::log!("k: {k}");
+        logging::log!(
+            "Point: ({}, {})",
+            (self.start.0 + self.vec.0 * k),
+            (self.start.1 + self.vec.1 * k)
+        );
+        (
+            (self.start.0 + self.vec.0 * k) as u32,
+            (self.start.1 + self.vec.1 * k) as u32,
+        )
+    }
+
+    fn len(&self) -> f32 {
+        (self.vec.0 * self.vec.0 + self.vec.1 * self.vec.1).sqrt()
+    }
+    fn angle(&self, ve2: &VectorEq) -> f32 {
+        let vec1 = self.vec;
+        let vec2 = ve2.vec;
+        ((vec1.0 * vec2.0 + vec1.1 * vec2.1) / (self.len() * ve2.len())).acos()
+    }
+}
+
+pub struct VectorFn {
+    pub start: (f32, f32),
+    pub x: f32,
+    pub y: f32,
+}
+pub fn get_intersect_of_two_lines(vec1: (f32, f32), vec2: VectorFn) -> Option<f32> {
+    let dvx = vec2.x - vec1.0;
+    let dvy = vec2.y - vec1.1;
+    if dvy - dvx == 0. {
+        return None;
+    }
+    let res = (vec2.start.0 as f32 - vec2.start.1 as f32) / (dvy - dvx);
+    Some(res)
 }
 
 #[derive(Clone, Debug)]
@@ -301,6 +390,22 @@ impl GraphicsItem for Rect {
             }
         }
     }
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
+        let x = (self.x)();
+        let y = (self.y)();
+        let width = (self.width)();
+        let height = (self.height)();
+        let mut answers: [Option<f32>; 4] = [None; 4];
+        answers[0] = veceq.intersect(&VectorEq::from((x, y), (x + width, y)));
+        answers[1] = veceq.intersect(&VectorEq::from((x, y + height), (x + width, y + height)));
+        answers[2] = veceq.intersect(&VectorEq::from((x, y), (x, y + height)));
+        answers[3] = veceq.intersect(&VectorEq::from((x + width, y), (x + width, y + height)));
+        answers
+            .iter()
+            .map(|el| el.unwrap_or(f32::MAX))
+            .map(|el| if el.is_infinite() { f32::MAX } else { el })
+            .reduce(|acc, e| if acc < e { acc } else { e })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -393,6 +498,29 @@ impl GraphicsItem for Circle {
             }
         }
     }
+    fn find_collide(&self, veceq: &VectorEq) -> Option<f32> {
+        let x = (self.x)() as f32;
+        let y = (self.y)() as f32;
+        let r = (self.radius)() as f32;
+        let a = (veceq.start.0 - x, veceq.start.1 - y);
+        let dot = a.0 * veceq.vec.0 + a.1 * veceq.vec.1;
+        let a2 = a.0 * a.0 + a.1 * a.1;
+        let d = dot * dot - a2 + r * r;
+        let l1 = -dot + d.sqrt();
+        let l2 = -dot - d.sqrt();
+        logging::log!("l1: {l1}, l2: {l2}");
+        Some(if l1 >= 0. && l2 >= 0. {
+            if l1 < l2 {
+                l1
+            } else {
+                l2
+            }
+        } else if l1 >= 0. {
+            l1
+        } else {
+            l2
+        })
+    }
 }
 
 impl GraphicsItem for Text {
@@ -428,6 +556,9 @@ impl GraphicsItem for Text {
                 self.y.set(p1.1);
             }
         }
+    }
+    fn find_collide(&self, _veceq: &VectorEq) -> Option<f32> {
+        None
     }
 }
 
@@ -485,7 +616,7 @@ impl TryFrom<Command> for Line {
     type Error = CommandType;
     fn try_from(value: Command) -> Result<Self, Self::Error> {
         if let CommandType::Line = value.ctype() {
-            let ((x, y), (x2, y2)) = (get_cursor_pos(), value.coords().resolve());
+            let ((x, y), (x2, y2)) = (value.start_coords(), value.coords().resolve());
             let color = value.color().unwrap_or("red".to_string());
             Ok(Line {
                 x1: RwSignal::new(x),
@@ -505,7 +636,7 @@ impl TryFrom<Command> for Rect {
     fn try_from(command: Command) -> Result<Self, Self::Error> {
         if let CommandType::Rectangle = command.ctype() {
             let color = command.color().unwrap_or("red".to_string());
-            let ((mut x, mut y), (x2, y2)) = (get_cursor_pos(), command.coords().resolve());
+            let ((mut x, mut y), (x2, y2)) = (command.start_coords(), command.coords().resolve());
             let mut width: i32 = x2 as i32 - x as i32;
             let mut height = y2 as i32 - y as i32;
             if width < 0 {
@@ -682,6 +813,9 @@ impl GraphicsItem for Group {
     }
     fn get_overlay_dims(&self) -> SelectableOverlayData {
         SelectableOverlayData::new(self.top, self.left, self.width, self.height)
+    }
+    fn find_collide(&self, _veceq: &VectorEq) -> Option<f32> {
+        None
     }
 }
 

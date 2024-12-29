@@ -19,6 +19,8 @@
 - [ ] grid (visual aid to help figure out coords)
 - [ ] options
   - [ ] remapable keybinds
-- [ ] modifiers
-  - [ ] move cursor to other point after figure creation
-  - [ ] "move until collide" second point is where it collides with another figure
+- [x] modifiers
+  - [x] move cursor to other point after figure creation
+  - [x] "move until collide" second point is where it collides with another figure
+  - [x] specify that cursor represents the middle of form, instead of upper left
+        corner

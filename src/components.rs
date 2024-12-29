@@ -1,4 +1,5 @@
-use crate::graphics::{Group, TrueSignalClone};
+use crate::graphics::{Group, TrueSignalClone, VectorEq};
+use crate::parser::Modifiers;
 use js_sys::Array;
 use leptos::ev::{self, MouseEvent};
 use leptos::web_sys::{Blob, Url};
@@ -19,7 +20,7 @@ use wasm_bindgen::JsValue;
 use crate::graphics::Circle;
 use crate::{
     graphics::{Form, GraphicsItem, Line, Rect, Text},
-    parser::{Command, CommandFSM, CommandType, Coords, Direction, FSMResult, RelCoordPair},
+    parser::{Command, CommandType, Coords, CreateComFSM, Direction, FSMResult, RelCoordPair},
 };
 
 // TOOD: refactor into separate files
@@ -70,6 +71,11 @@ pub fn get_cursor_pos() -> (u32, u32) {
     ((cs.x)(), (cs.y)())
 }
 
+fn get_form_vector(p: (u32, u32)) -> (i32, i32) {
+    let p2 = get_cursor_pos();
+    (p.0 as i32 - p2.0 as i32, p.1 as i32 - p2.1 as i32)
+}
+
 fn parse_command(
     com: Command,
     set_forms: WriteSignal<Vec<Form>>,
@@ -85,9 +91,78 @@ fn parse_command(
                     form.1.move_form(&com.coords());
                 }
             }
-            _ => todo!(),
+            _ => unreachable!(),
         }
     } else {
+        let mut next_com = None;
+        if com.mods().collide() {
+            let p1 = get_cursor_pos();
+            let p2 = com.coords().resolve();
+
+            let veceq = VectorEq::from(p1, p2);
+            logging::log!("Veceq: {veceq:?}");
+            let forms = use_context::<Forms>().unwrap().0;
+            let mut min = f32::MAX; // FIXME: definitely not how this is supposed to be used (but
+                                    // it works)
+            for form in forms() {
+                if let Some(dist) = form.find_collide(&veceq) {
+                    if dist < min && dist.is_finite() && dist > 0. {
+                        logging::log!("new min={dist}");
+                        min = dist
+                    }
+                }
+            }
+
+            logging::log!("Calculating final point now...k={min}");
+            let (x, y) = veceq.resolve(min);
+            let com = Command::new(
+                com.ctype(),
+                None,
+                Coords::AbsCoord(x, y),
+                // Coords::AbsCoord((x as i32 + vecx) as u32, (y as i32 + vecy) as u32),
+                com.color(),
+                Modifiers::new_with_state(
+                    com.mods().move_cursor(),
+                    false,
+                    com.mods().cursor_is_middle(),
+                ),
+            );
+            parse_command(com, set_forms, set_overlays);
+            return;
+        }
+        if com.mods().move_cursor() {
+            next_com = Some(Command::new(
+                CommandType::Move,
+                None,
+                com.coords(),
+                None,
+                Modifiers::new(),
+            ));
+        }
+        if com.mods().cursor_is_middle() {
+            let cursor_pos = get_cursor_pos();
+            let vec = get_form_vector(com.coords().resolve());
+            let start_coords = Coords::AbsCoord(
+                (cursor_pos.0 as i32 - vec.0) as u32,
+                (cursor_pos.1 as i32 - vec.1) as u32,
+            );
+            parse_command(
+                Command::new(
+                    com.ctype(),
+                    Some(start_coords),
+                    com.coords(),
+                    com.color(),
+                    Modifiers::new_with_state(
+                        com.mods().move_cursor(),
+                        com.mods().collide(),
+                        false,
+                    ),
+                ),
+                set_forms,
+                set_overlays,
+            );
+            return;
+        }
         let form = match com.ctype() {
             CommandType::Line => {
                 logging::log!("Creating a line...");
@@ -110,6 +185,10 @@ fn parse_command(
         if let Some(form) = form {
             set_overlays.update(|vec| vec.push(form.get_overlay_dims()));
             set_forms.update(|vec| vec.push(form));
+        }
+
+        if let Some(com) = next_com {
+            parse_command(com, set_forms, set_overlays);
         }
     }
 }
@@ -153,16 +232,20 @@ pub struct OverlaysWS(pub WriteSignal<Vec<SelectableOverlayData>>);
 #[derive(Clone)]
 pub struct PreviewWS(pub WriteSignal<Option<Form>>);
 
+#[derive(Clone)]
+struct Forms(pub ReadSignal<Vec<Form>>);
+
 #[component]
 fn Reader() -> impl IntoView {
     let (com, set_com) = create_signal(String::new());
-    let (fsm, set_fsm) = create_signal(Option::<CommandFSM>::None);
+    let (fsm, set_fsm) = create_signal(Option::<CreateComFSM>::None);
     let (forms, set_forms) = create_signal(Vec::<Form>::new());
     let (limbo, set_limbo) = create_signal(Option::<Form>::None);
     let (select_buffer, set_select_buffer) = create_signal(Vec::<(usize, Form)>::new());
     let (select_mode, set_select_mode) = create_signal(SelectState::Off);
     let (overlays, set_overlays) = create_signal(Vec::<SelectableOverlayData>::new());
     let (preview, set_preview) = create_signal(Option::<Form>::None);
+    provide_context(Forms(forms));
     provide_context(overlays);
     provide_context(PreviewWS(set_preview));
     provide_context(SelectMode(select_mode));
@@ -339,7 +422,7 @@ fn Reader() -> impl IntoView {
                 set_com.update(|str| {
                     str.pop();
                 });
-                set_fsm(match CommandFSM::from(com()) {
+                set_fsm(match CreateComFSM::from(com()) {
                     FSMResult::OkCommand(com) => {
                         // this is technically unreachable
                         parse_command(com, set_forms, set_overlays);
@@ -358,6 +441,7 @@ fn Reader() -> impl IntoView {
                 set_overlays.update(|vec| {
                     vec.pop();
                 });
+                set_preview(None);
                 return;
             }
             "U" if fsm().is_none() => {
@@ -392,15 +476,13 @@ fn Reader() -> impl IntoView {
                     }
                     Err(new_fsm) => set_fsm(Some(new_fsm)),
                 },
-                None => {
-                    set_fsm(Some(match CommandFSM::new(next_char) {
-                        Ok(fsm) => fsm,
-                        Err(err) => {
-                            logging::error!("Couldn't create CommandFSM, because this stoopid char snuck in: {err}");
-                            return;
-                        }
-                    }))
-                }
+                None => set_fsm(Some(match CreateComFSM::new(next_char) {
+                    Ok(fsm) => fsm,
+                    Err(err) => {
+                        logging::error!("Couldn't create CreateComFSM, because this stoopid char snuck in: {err}");
+                        return;
+                    }
+                })),
             }
             update_preview(&fsm);
         }
@@ -435,7 +517,7 @@ fn Reader() -> impl IntoView {
     }
 }
 
-fn update_preview(fsm: &ReadSignal<Option<CommandFSM>>) {
+fn update_preview(fsm: &ReadSignal<Option<CreateComFSM>>) {
     let set_preview = use_context::<PreviewWS>().unwrap().0;
     if let Some(fsm) = fsm() {
         set_preview(match fsm.try_into() {
@@ -691,7 +773,7 @@ pub fn Selectable(edit: ReadSignal<bool>, children: Children) -> impl IntoView {
 
 fn clear_select(
     set_com: WriteSignal<String>,
-    set_fsm: WriteSignal<Option<CommandFSM>>,
+    set_fsm: WriteSignal<Option<CreateComFSM>>,
     set_select_mode: WriteSignal<SelectState>,
     set_overlays: WriteSignal<Vec<SelectableOverlayData>>,
     select_buffer: ReadSignal<Vec<(usize, Form)>>,
