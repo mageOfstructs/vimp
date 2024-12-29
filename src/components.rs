@@ -102,7 +102,8 @@ fn parse_command(
             let veceq = VectorEq::from(p1, p2);
             logging::log!("Veceq: {veceq:?}");
             let forms = use_context::<Forms>().unwrap().0;
-            let mut min = f32::MAX;
+            let mut min = f32::MAX; // FIXME: definitely not how this is supposed to be used (but
+                                    // it works)
             for form in forms() {
                 if let Some(dist) = form.find_collide(&veceq) {
                     if dist < min && dist.is_finite() && dist > 0. {
