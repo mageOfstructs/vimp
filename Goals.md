@@ -24,3 +24,4 @@
   - [x] "move until collide" second point is where it collides with another figure
   - [x] specify that cursor represents the middle of form, instead of upper left
         corner
+- [x] make fast coord work with Move commands

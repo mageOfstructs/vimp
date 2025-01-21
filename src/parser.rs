@@ -221,6 +221,7 @@ impl CreateComFSM {
         let mut coords = None;
         let ctype = match next_char {
             'l' => CommandType::Line,
+            'm' => CommandType::Move,
             'r' => CommandType::Rectangle,
             't' => CommandType::Text,
             'c' => CommandType::Circle(0),
